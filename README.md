@@ -7,6 +7,9 @@ The current application only opens a Qt Widgets window containing a
 intentionally not used yet; BLE discovery and board communication will be
 added after the basic desktop stack is familiar.
 
+Product requirements, architecture, and the development roadmap are indexed in
+[the project documentation](docs/README.md).
+
 ## Requirements
 
 - [uv](https://docs.astral.sh/uv/getting-started/installation/)
