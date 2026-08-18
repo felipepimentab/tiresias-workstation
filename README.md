@@ -1,11 +1,11 @@
 # Tiresias Workstation
 
-Minimal PySide6 and Bleak starter application for the Tiresias DK.
+PySide6 and Bleak desktop application for the Tiresias DK.
 
-The current application only opens a Qt Widgets window containing a
-"Hello, world!" message. Bleak is installed as a project dependency but is
-intentionally not used yet; BLE discovery and board communication will be
-added after the basic desktop stack is familiar.
+The application scans for nearby advertising BLE devices, displays their
+identifiers, signal strength, and advertised services, and can attempt to
+connect to a selected device. Scanning and connection work run outside the UI
+thread so the window remains responsive.
 
 Product requirements, architecture, and the development roadmap are indexed in
 [the project documentation](docs/README.md).
@@ -61,12 +61,23 @@ Update all dependencies within the constraints in `pyproject.toml`:
 uv lock --upgrade
 ```
 
+## Documentation style
+
+Python modules use Google-style docstrings. Public classes and operations
+document their arguments, return values, raised exceptions, and relevant state;
+inline comments are reserved for lifecycle and concurrency decisions that are
+not apparent from the code itself.
+
 ## Project layout
 
 ```text
 src/tiresias_workstation/
-├── __init__.py       Package metadata
-├── __main__.py       Support for `python -m tiresias_workstation`
-├── main.py           QApplication setup and application entry point
-└── main_window.py    The Qt Widgets main window
+├── __init__.py                  Package metadata
+├── __main__.py                  Support for `python -m tiresias_workstation`
+├── bleak_adapter.py             Bleak discovery and connection transport
+├── ble_controller.py            Background asyncio and Qt signal coordinator
+├── device_discovery_screen.py   Device discovery and connection UI
+├── devices.py                   Platform-neutral BLE device model
+├── main.py                      QApplication setup and application entry point
+└── main_window.py               The Qt Widgets main window
 ```
