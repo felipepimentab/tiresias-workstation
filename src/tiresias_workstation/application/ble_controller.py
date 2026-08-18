@@ -15,8 +15,8 @@ from typing import Any
 
 from PySide6.QtCore import QObject, Signal
 
-from tiresias_workstation.bleak_adapter import BleakDeviceTransport
-from tiresias_workstation.devices import DeviceTransport, DiscoveredDevice
+from tiresias_workstation.adapters.bleak_adapter import BleakDeviceTransport
+from tiresias_workstation.domain.devices import DeviceTransport, DiscoveredDevice
 
 # Factories make the controller independently testable with an in-memory
 # transport while ensuring the real Bleak transport is created on its own loop.

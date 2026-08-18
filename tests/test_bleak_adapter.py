@@ -4,7 +4,7 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from tiresias_workstation.bleak_adapter import BleakDeviceTransport
+from tiresias_workstation.adapters.bleak_adapter import BleakDeviceTransport
 
 
 class FakeScanner:
@@ -60,8 +60,14 @@ class BleakDeviceTransportTest(unittest.IsolatedAsyncioTestCase):
         disconnected = []
 
         with (
-            patch("tiresias_workstation.bleak_adapter.BleakScanner", FakeScanner),
-            patch("tiresias_workstation.bleak_adapter.BleakClient", FakeClient),
+            patch(
+                "tiresias_workstation.adapters.bleak_adapter.BleakScanner",
+                FakeScanner,
+            ),
+            patch(
+                "tiresias_workstation.adapters.bleak_adapter.BleakClient",
+                FakeClient,
+            ),
         ):
             devices = await transport.scan(updates.append, timeout=0)
             await transport.connect(

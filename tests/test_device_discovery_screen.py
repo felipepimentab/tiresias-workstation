@@ -5,8 +5,8 @@ import unittest
 from PySide6.QtCore import QObject, Signal
 from PySide6.QtWidgets import QApplication, QPushButton, QTableWidget
 
-from tiresias_workstation.devices import DiscoveredDevice
-from tiresias_workstation.main_window import MainWindow
+from tiresias_workstation.domain.devices import DiscoveredDevice
+from tiresias_workstation.presentation.main_window import MainWindow
 
 
 class FakeController(QObject):

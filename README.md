@@ -72,12 +72,15 @@ not apparent from the code itself.
 
 ```text
 src/tiresias_workstation/
-├── __init__.py                  Package metadata
+├── adapters/                    Bleak and other infrastructure integrations
+│   └── bleak_adapter.py         Bleak discovery and connection transport
+├── application/                 Workstation use-case coordination
+│   └── ble_controller.py        Background asyncio and Qt signal coordinator
+├── domain/                      Platform-neutral models and interfaces
+│   └── devices.py               BLE device model and transport protocol
+├── presentation/                Qt widgets and windows
+│   ├── device_discovery_screen.py
+│   └── main_window.py
 ├── __main__.py                  Support for `python -m tiresias_workstation`
-├── bleak_adapter.py             Bleak discovery and connection transport
-├── ble_controller.py            Background asyncio and Qt signal coordinator
-├── device_discovery_screen.py   Device discovery and connection UI
-├── devices.py                   Platform-neutral BLE device model
-├── main.py                      QApplication setup and application entry point
-└── main_window.py               The Qt Widgets main window
+└── main.py                      QApplication setup and application entry point
 ```

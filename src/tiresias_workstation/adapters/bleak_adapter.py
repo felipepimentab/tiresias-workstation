@@ -12,7 +12,7 @@ from bleak import BleakClient, BleakScanner
 from bleak.backends.device import BLEDevice
 from bleak.backends.scanner import AdvertisementData
 
-from tiresias_workstation.devices import DiscoveredDevice
+from tiresias_workstation.domain.devices import DiscoveredDevice
 
 
 class BleakDeviceTransport:

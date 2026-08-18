@@ -7,8 +7,8 @@ import unittest
 from PySide6.QtTest import QSignalSpy
 from PySide6.QtWidgets import QApplication
 
-from tiresias_workstation.ble_controller import BleController
-from tiresias_workstation.devices import DiscoveredDevice
+from tiresias_workstation.application.ble_controller import BleController
+from tiresias_workstation.domain.devices import DiscoveredDevice
 
 
 class FakeTransport:

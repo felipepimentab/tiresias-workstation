@@ -4,7 +4,7 @@ import sys
 
 from PySide6.QtWidgets import QApplication
 
-from tiresias_workstation.main_window import MainWindow
+from tiresias_workstation.presentation.main_window import MainWindow
 
 
 def main() -> int:

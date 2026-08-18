@@ -3,8 +3,10 @@
 from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import QMainWindow
 
-from tiresias_workstation.ble_controller import BleController
-from tiresias_workstation.device_discovery_screen import DeviceDiscoveryScreen
+from tiresias_workstation.application.ble_controller import BleController
+from tiresias_workstation.presentation.device_discovery_screen import (
+    DeviceDiscoveryScreen,
+)
 
 
 class MainWindow(QMainWindow):
