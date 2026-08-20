@@ -157,3 +157,75 @@ class BleakDeviceTransport:
                 await client.disconnect()
         finally:
             self._client = None
+
+    async def read_characteristic(self, characteristic_uuid: str) -> bytes:
+        """Read one GATT characteristic from the active Bleak client.
+
+        Args:
+            characteristic_uuid: Canonical 128-bit characteristic UUID.
+
+        Returns:
+            Characteristic payload copied into immutable bytes.
+
+        Raises:
+            ConnectionError: If no device is connected.
+            bleak.exc.BleakError: If the backend rejects the read.
+        """
+        client = self._connected_client()
+        return bytes(await client.read_gatt_char(characteristic_uuid))
+
+    async def write_characteristic(
+        self,
+        characteristic_uuid: str,
+        value: bytes,
+        *,
+        response: bool,
+    ) -> None:
+        """Write one GATT characteristic through the active Bleak client.
+
+        Args:
+            characteristic_uuid: Canonical 128-bit characteristic UUID.
+            value: Complete characteristic payload.
+            response: Whether to request an ATT write response.
+
+        Raises:
+            ConnectionError: If no device is connected.
+            bleak.exc.BleakError: If the backend rejects the write.
+        """
+        client = self._connected_client()
+        await client.write_gatt_char(characteristic_uuid, value, response=response)
+
+    async def start_notifications(
+        self,
+        characteristic_uuid: str,
+        callback: Callable[[bytes], None],
+    ) -> None:
+        """Subscribe to GATT notifications or indications.
+
+        Args:
+            characteristic_uuid: Canonical 128-bit characteristic UUID.
+            callback: Callback receiving immutable payload bytes on the BLE
+                asyncio thread.
+        """
+        client = self._connected_client()
+        await client.start_notify(
+            characteristic_uuid,
+            lambda _sender, value: callback(bytes(value)),
+        )
+
+    async def stop_notifications(self, characteristic_uuid: str) -> None:
+        """Remove a subscription while a connection is still active.
+
+        Args:
+            characteristic_uuid: Canonical 128-bit characteristic UUID.
+        """
+        client = self._client
+        if client is not None and client.is_connected:
+            await client.stop_notify(characteristic_uuid)
+
+    def _connected_client(self) -> BleakClient:
+        """Return the active client or reject an invalid operation state."""
+        client = self._client
+        if client is None or not client.is_connected:
+            raise ConnectionError("No Tiresias device is connected.")
+        return client

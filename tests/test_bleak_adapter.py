@@ -36,11 +36,16 @@ class FakeScanner:
 class FakeClient:
     """Model the subset of BleakClient used by the transport."""
 
+    last_instance = None
+
     def __init__(self, device, disconnected_callback, timeout):
         self.device = device
         self.disconnected_callback = disconnected_callback
         self.timeout = timeout
         self.is_connected = False
+        self.writes = []
+        self.notifications_stopped = []
+        FakeClient.last_instance = self
 
     async def connect(self):
         self.is_connected = True
@@ -48,6 +53,18 @@ class FakeClient:
     async def disconnect(self):
         self.is_connected = False
         self.disconnected_callback(self)
+
+    async def read_gatt_char(self, characteristic_uuid):
+        return bytearray(characteristic_uuid.encode("ascii"))
+
+    async def write_gatt_char(self, characteristic_uuid, value, *, response):
+        self.writes.append((characteristic_uuid, bytes(value), response))
+
+    async def start_notify(self, characteristic_uuid, callback):
+        callback(characteristic_uuid, bytearray(b"indication"))
+
+    async def stop_notify(self, characteristic_uuid):
+        self.notifications_stopped.append(characteristic_uuid)
 
 
 class BleakDeviceTransportTest(unittest.IsolatedAsyncioTestCase):
@@ -75,6 +92,13 @@ class BleakDeviceTransportTest(unittest.IsolatedAsyncioTestCase):
                 disconnected.append,
                 timeout=0.1,
             )
+            payload = await transport.read_characteristic("read")
+            await transport.write_characteristic(
+                "write", b"request", response=True
+            )
+            indications = []
+            await transport.start_notifications("response", indications.append)
+            await transport.stop_notifications("response")
             await transport.disconnect()
 
         self.assertEqual(len(updates), 2)
@@ -86,6 +110,10 @@ class BleakDeviceTransportTest(unittest.IsolatedAsyncioTestCase):
             ("0000180f-0000-1000-8000-00805f9b34fb",),
         )
         self.assertEqual(disconnected, [devices[0].address])
+        self.assertEqual(payload, b"read")
+        self.assertEqual(indications, [b"indication"])
+        self.assertEqual(FakeClient.last_instance.writes, [("write", b"request", True)])
+        self.assertEqual(FakeClient.last_instance.notifications_stopped, ["response"])
 
     async def test_connect_requires_a_recently_discovered_device(self):
         """Reject addresses that do not have a retained native device handle."""

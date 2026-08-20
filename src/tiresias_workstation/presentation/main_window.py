@@ -1,12 +1,14 @@
 """Define the top-level Tiresias Workstation window."""
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Slot
 from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
     QMainWindow,
+    QPushButton,
+    QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -15,6 +17,7 @@ from tiresias_workstation.application.ble_controller import BleController
 from tiresias_workstation.presentation.device_discovery_screen import (
     DeviceDiscoveryScreen,
 )
+from tiresias_workstation.presentation.device_control_screen import DeviceControlScreen
 
 
 class MainWindow(QMainWindow):
@@ -38,8 +41,11 @@ class MainWindow(QMainWindow):
         self.setUnifiedTitleAndToolBarOnMac(True)
 
         self.device_discovery_screen = DeviceDiscoveryScreen(self._controller)
+        self.device_control_screen = DeviceControlScreen(self._controller)
         self.setCentralWidget(self._build_application_shell())
         self.setStyleSheet(_WINDOW_STYLE_SHEET)
+        self._controller.session_loaded.connect(self._session_available)
+        self._controller.disconnected.connect(self._session_lost)
 
     def _build_application_shell(self) -> QWidget:
         """Build the persistent navigation shell around the active page.
@@ -68,18 +74,22 @@ class MainWindow(QMainWindow):
         workspace_label.setObjectName("sidebarSectionLabel")
         sidebar_layout.addWidget(workspace_label)
 
-        devices_button = self._navigation_row("Devices", selected=True)
-        devices_button.setObjectName("devicesNavigationButton")
-        sidebar_layout.addWidget(devices_button)
-        sidebar_layout.addWidget(self._navigation_row("Board information"))
-        sidebar_layout.addWidget(self._navigation_row("DSP profiles"))
-        sidebar_layout.addWidget(self._navigation_row("Diagnostics"))
+        self._devices_button = self._navigation_row("Devices", selected=True)
+        self._devices_button.setObjectName("devicesNavigationButton")
+        self._board_button = self._navigation_row("Board information", enabled=False)
+        self._board_button.setObjectName("boardNavigationButton")
+        self._parameters_button = self._navigation_row("DSP parameters", enabled=False)
+        self._parameters_button.setObjectName("parametersNavigationButton")
+        sidebar_layout.addWidget(self._devices_button)
+        sidebar_layout.addWidget(self._board_button)
+        sidebar_layout.addWidget(self._parameters_button)
+        sidebar_layout.addWidget(self._navigation_row("Diagnostics", enabled=False))
 
         future_label = QLabel("LATER RELEASES")
         future_label.setObjectName("sidebarSectionLabel")
         sidebar_layout.addWidget(future_label)
-        sidebar_layout.addWidget(self._navigation_row("Audiogram fitting"))
-        sidebar_layout.addWidget(self._navigation_row("DSP editor"))
+        sidebar_layout.addWidget(self._navigation_row("Audiogram fitting", enabled=False))
+        sidebar_layout.addWidget(self._navigation_row("DSP editor", enabled=False))
         sidebar_layout.addStretch()
 
         boundary = QLabel("Engineering tool\nNot for clinical use")
@@ -87,28 +97,84 @@ class MainWindow(QMainWindow):
         sidebar_layout.addWidget(boundary)
 
         shell_layout.addWidget(sidebar)
-        shell_layout.addWidget(self.device_discovery_screen, 1)
+        self._content_stack = QStackedWidget()
+        self._content_stack.addWidget(self.device_discovery_screen)
+        self._content_stack.addWidget(self.device_control_screen)
+        shell_layout.addWidget(self._content_stack, 1)
+
+        self._devices_button.clicked.connect(self._show_devices)
+        self._board_button.clicked.connect(self._show_board)
+        self._parameters_button.clicked.connect(self._show_parameters)
         return shell
 
     @staticmethod
-    def _navigation_row(text: str, *, selected: bool = False) -> QLabel:
+    def _navigation_row(
+        text: str,
+        *,
+        selected: bool = False,
+        enabled: bool = True,
+    ) -> QPushButton:
         """Create a navigation row for an implemented or planned page.
 
         Args:
             text: Visible page label.
             selected: Whether the row represents the current page.
+            enabled: Whether the destination is currently available.
 
         Returns:
-            Configured sidebar row. Planned pages remain disabled.
+            Configured sidebar row.
         """
-        label = QLabel(text)
-        label.setObjectName("navigationButton")
-        label.setProperty("selected", selected)
-        label.setEnabled(selected)
-        label.setAlignment(
-            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
-        )
-        return label
+        button = QPushButton(text)
+        button.setObjectName("navigationButton")
+        button.setProperty("selected", selected)
+        button.setEnabled(enabled)
+        button.setCursor(Qt.CursorShape.PointingHandCursor)
+        return button
+
+    @Slot()
+    def _show_devices(self) -> None:
+        """Navigate to BLE discovery and connection controls."""
+        self._content_stack.setCurrentWidget(self.device_discovery_screen)
+        self._select_navigation(self._devices_button)
+
+    @Slot()
+    def _show_board(self) -> None:
+        """Navigate to standard and custom board information."""
+        self._content_stack.setCurrentWidget(self.device_control_screen)
+        self.device_control_screen.show_board_information()
+        self._select_navigation(self._board_button)
+
+    @Slot()
+    def _show_parameters(self) -> None:
+        """Navigate to ID-based persistent DSP parameter control."""
+        self._content_stack.setCurrentWidget(self.device_control_screen)
+        self.device_control_screen.show_parameters()
+        self._select_navigation(self._parameters_button)
+
+    @Slot(object)
+    def _session_available(self, _session: object) -> None:
+        """Enable connected-device pages after protocol validation."""
+        self._board_button.setEnabled(True)
+        self._parameters_button.setEnabled(True)
+        self._show_board()
+
+    @Slot(str)
+    def _session_lost(self, _address: str) -> None:
+        """Return to Devices and disable session-scoped navigation."""
+        self._board_button.setEnabled(False)
+        self._parameters_button.setEnabled(False)
+        self._show_devices()
+
+    def _select_navigation(self, selected: QPushButton) -> None:
+        """Update the active sidebar style for one implemented page."""
+        for button in (
+            self._devices_button,
+            self._board_button,
+            self._parameters_button,
+        ):
+            button.setProperty("selected", button is selected)
+            button.style().unpolish(button)
+            button.style().polish(button)
 
     def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802
         """Release Bluetooth resources before Qt destroys the window.
@@ -143,7 +209,8 @@ _WINDOW_STYLE_SHEET = """
     font-weight: 600;
     padding: 18px 9px 6px 9px;
 }
-#sidebar QLabel#navigationButton, #devicesNavigationButton {
+#sidebar QPushButton#navigationButton, #devicesNavigationButton,
+#boardNavigationButton, #parametersNavigationButton {
     background: transparent;
     border: none;
     border-radius: 7px;
@@ -154,12 +221,12 @@ _WINDOW_STYLE_SHEET = """
     padding: 0 10px;
     text-align: left;
 }
-#devicesNavigationButton {
+#sidebar QPushButton[selected="true"] {
     background: #e5e5e5;
     color: #171717;
     font-weight: 500;
 }
-#sidebar QLabel#navigationButton:disabled {
+#sidebar QPushButton#navigationButton:disabled {
     color: #a2a2a6;
 }
 #productBoundary {

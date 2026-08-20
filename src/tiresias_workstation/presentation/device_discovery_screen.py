@@ -113,10 +113,10 @@ class DeviceDiscoveryScreen(QWidget):
         card_layout.setContentsMargins(1, 1, 1, 1)
         card_layout.setSpacing(0)
 
-        self._device_table = QTableWidget(0, 4)
+        self._device_table = QTableWidget(0, 5)
         self._device_table.setObjectName("deviceTable")
         self._device_table.setHorizontalHeaderLabels(
-            ["Device", "Identifier", "Signal", "Advertised services"]
+            ["Device", "Identifier", "Signal", "Tiresias", "Advertised services"]
         )
         self._device_table.setSelectionBehavior(
             QAbstractItemView.SelectionBehavior.SelectRows
@@ -133,7 +133,8 @@ class DeviceDiscoveryScreen(QWidget):
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
         card_layout.addWidget(self._device_table)
         page_layout.addWidget(device_card, 1)
 
@@ -212,6 +213,13 @@ class DeviceDiscoveryScreen(QWidget):
         """Request a connection to the currently selected table row."""
         address = self._selected_address()
         if address is None:
+            return
+        device = self._devices.get(address)
+        if device is None or not device.is_tiresias:
+            self._show_message(
+                "The selected advertisement does not include the Tiresias service.",
+                True,
+            )
             return
         if not self._controller.connect(address):
             self._show_message(
@@ -382,7 +390,8 @@ class DeviceDiscoveryScreen(QWidget):
             self._selection_detail.setText("Select a row to connect")
         else:
             self._selection_detail.setText(
-                f"{self._display_name(device)}  ·  {device.address}"
+                f"{self._display_name(device)}  ·  {device.address}  ·  "
+                f"{'Supported' if device.is_tiresias else 'Not a Tiresias device'}"
             )
         self._update_controls()
 
@@ -400,6 +409,9 @@ class DeviceDiscoveryScreen(QWidget):
 
         address_item = QTableWidgetItem(device.address)
         signal_item = QTableWidgetItem(self._format_signal(device.rssi))
+        identity_item = QTableWidgetItem("Supported" if device.is_tiresias else "—")
+        if device.is_tiresias:
+            identity_item.setForeground(QColor("#16803a"))
 
         services = [self._short_uuid(uuid) for uuid in device.service_uuids]
         if services:
@@ -412,7 +424,7 @@ class DeviceDiscoveryScreen(QWidget):
         services_item.setToolTip("\n".join(device.service_uuids))
 
         for column, item in enumerate(
-            (name_item, address_item, signal_item, services_item)
+            (name_item, address_item, signal_item, identity_item, services_item)
         ):
             self._device_table.setItem(row, column, item)
 
@@ -445,11 +457,15 @@ class DeviceDiscoveryScreen(QWidget):
     def _update_controls(self) -> None:
         """Derive button and table availability from current screen state."""
         has_selection = self._selected_address() is not None
+        selected = self._devices.get(self._selected_address() or "")
+        supported_selection = selected is not None and selected.is_tiresias
         is_connected = self._connected_address is not None
         self._scan_button.setEnabled(not self._busy and not is_connected)
         self._device_table.setEnabled(not self._busy and not is_connected)
         self._connect_button.setVisible(not is_connected)
-        self._connect_button.setEnabled(has_selection and not self._busy)
+        self._connect_button.setEnabled(
+            has_selection and supported_selection and not self._busy
+        )
         self._disconnect_button.setVisible(is_connected)
         self._disconnect_button.setEnabled(is_connected and not self._busy)
 

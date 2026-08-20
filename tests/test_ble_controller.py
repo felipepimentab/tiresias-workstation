@@ -9,6 +9,64 @@ from PySide6.QtWidgets import QApplication
 
 from tiresias_workstation.application.ble_controller import BleController
 from tiresias_workstation.domain.devices import DiscoveredDevice
+from tiresias_workstation.domain.tiresias import (
+    DeviceInformation,
+    DeviceSession,
+    DeviceState,
+    DeviceStatus,
+    ParameterAccess,
+    ParameterDefinition,
+    ParameterEncoding,
+    ParameterUnit,
+    ParameterValue,
+    ProtocolCapability,
+    ProtocolInformation,
+    RequestResult,
+    StatusFlag,
+)
+
+
+def device_session():
+    """Return one ready session used by controller tests."""
+    return DeviceSession(
+        DeviceInformation("Tiresias", "Tiresias DK", "1", "A", "0.1.0"),
+        ProtocolInformation(
+            1,
+            0,
+            ProtocolCapability(15),
+            12,
+            16,
+            32,
+            1,
+            1,
+            2,
+            3,
+            4,
+        ),
+        DeviceStatus(
+            DeviceState.READY,
+            StatusFlag(7),
+            RequestResult.OK,
+            4,
+            0,
+            0,
+        ),
+        (
+            ParameterDefinition(
+                1,
+                ParameterAccess(7),
+                ParameterEncoding.Q5_23,
+                0x2000,
+                1,
+                ParameterUnit.LINEAR,
+                0,
+                0x02000000,
+                0x00800000,
+                0x00008000,
+                "PHASE1",
+            ),
+        ),
+    )
 
 
 class FakeTransport:
@@ -18,6 +76,7 @@ class FakeTransport:
         """Initialize fake connection state and callback storage."""
         self.connected_address: str | None = None
         self.disconnected_callback = None
+        self.disconnect_during_session_read = False
 
     async def scan(self, on_device, *, timeout):
         del timeout
@@ -46,6 +105,23 @@ class FakeTransport:
         if address is not None and self.disconnected_callback is not None:
             self.disconnected_callback(address)
 
+    async def read_session(self):
+        """Return a session or simulate link loss in the completion race."""
+        if self.disconnect_during_session_read:
+            address = self.connected_address
+            self.connected_address = None
+            self.disconnected_callback(address)
+        await asyncio.sleep(0)
+        return device_session()
+
+    async def read_parameter(self, parameter_id):
+        await asyncio.sleep(0)
+        return ParameterValue(parameter_id, 0x00800000, 4)
+
+    async def write_parameter(self, parameter_id, value):
+        await asyncio.sleep(0)
+        return ParameterValue(parameter_id, value, 5)
+
 
 class BleControllerTest(unittest.TestCase):
     """Verify operation scheduling, signals, and lifecycle behavior."""
@@ -57,7 +133,7 @@ class BleControllerTest(unittest.TestCase):
     def setUp(self):
         self.transport = FakeTransport()
         self.controller = BleController(
-            transport_factory=lambda: self.transport,
+            client_factory=lambda: self.transport,
             scan_timeout=0,
             connection_timeout=0.1,
         )
@@ -85,14 +161,33 @@ class BleControllerTest(unittest.TestCase):
         self.assertEqual(devices[0].name, "Tiresias DK")
 
         connected_spy = QSignalSpy(self.controller.connection_succeeded)
+        session_spy = QSignalSpy(self.controller.session_loaded)
         self.assertTrue(self.controller.connect(devices[0].address))
         self.wait_for_signal(connected_spy)
         self.assertEqual(self.transport.connected_address, devices[0].address)
+        self.assertEqual(session_spy.count(), 1)
+
+        written_spy = QSignalSpy(self.controller.parameter_written)
+        self.assertTrue(self.controller.write_parameter(1, 0x01000000))
+        self.wait_for_signal(written_spy)
+        self.assertEqual(written_spy.at(0)[0].parameter_revision, 5)
 
         disconnected_spy = QSignalSpy(self.controller.disconnected)
         self.assertTrue(self.controller.disconnect())
         self.wait_for_signal(disconnected_spy)
         self.assertIsNone(self.transport.connected_address)
+
+    def test_link_loss_during_session_read_never_reports_connected(self):
+        """Close the connect-completion race without publishing false readiness."""
+        self.transport.disconnect_during_session_read = True
+        self.transport._devices = True
+        connected_spy = QSignalSpy(self.controller.connection_succeeded)
+        disconnected_spy = QSignalSpy(self.controller.disconnected)
+
+        self.assertTrue(self.controller.connect("AA:BB:CC:DD:EE:FF"))
+        self.wait_for_signal(disconnected_spy)
+
+        self.assertEqual(connected_spy.count(), 0)
 
 
 if __name__ == "__main__":

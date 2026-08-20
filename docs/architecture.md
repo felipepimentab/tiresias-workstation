@@ -40,24 +40,28 @@ Bleak, pyClarity, or a particular board protocol.
 ### Adapters
 
 - **Bleak transport:** scanning, connections, GATT reads/writes, and notifications.
-- **Tiresias protocol:** UUIDs, commands, packet framing, checksums, acknowledgments,
-  and retries.
+- **Tiresias protocol:** UUIDs, fixed record decoding, catalog integrity,
+  transaction correlation, and firmware result translation.
 - **Bundled catalog:** loads and validates the ten MVP parameter tables.
 - **Future fitting engines:** adapt pyClarity/CAMEQ, NAL-NL2, or other rules to a
   common prescription interface.
 
 ## Main extension points
 
-- `DeviceClient`: operations supported by a Tiresias DK.
+- `TiresiasClient`: ready-session and stable-ID parameter operations.
 - `PrescriptionCatalog`: available named, precomputed parameter tables.
 - `PrescriptionEngine`: generates a parameter table from fitting inputs.
 
 The UI applies a parameter table without knowing whether it came from a bundled
 asset, pyClarity, or another prescription engine.
 
+For the architecture-validation MVP, `BleakDeviceTransport` owns generic BLE
+and GATT mechanics while `TiresiasProtocolClient` owns the board protocol. The
+Qt controller serializes use cases on its worker loop; screens receive only
+domain snapshots and terminal results.
+
 ## Dependency rule
 
 Dependencies point inward: adapters depend on domain interfaces, never the
 reverse. This keeps BLE hardware and external libraries replaceable in tests
 and future releases.
-

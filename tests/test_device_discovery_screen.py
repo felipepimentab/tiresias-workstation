@@ -3,9 +3,11 @@
 import unittest
 
 from PySide6.QtCore import QObject, Signal
-from PySide6.QtWidgets import QApplication, QPushButton, QTableWidget
+from PySide6.QtWidgets import QApplication, QDoubleSpinBox, QPushButton, QTableWidget
 
 from tiresias_workstation.domain.devices import DiscoveredDevice
+from test_ble_controller import device_session
+from tiresias_workstation.domain.tiresias import ParameterValue
 from tiresias_workstation.presentation.main_window import MainWindow
 
 
@@ -21,6 +23,12 @@ class FakeController(QObject):
     connection_failed = Signal(str, str)
     disconnection_started = Signal(str)
     disconnected = Signal(str)
+    session_loaded = Signal(object)
+    parameter_read_started = Signal(int)
+    parameter_read = Signal(object)
+    parameter_write_started = Signal(int, int)
+    parameter_written = Signal(object)
+    parameter_operation_failed = Signal(int, str)
 
     def __init__(self):
         super().__init__()
@@ -28,10 +36,13 @@ class FakeController(QObject):
             address="AA:BB:CC:DD:EE:FF",
             name="Tiresias DK",
             rssi=-52,
-            service_uuids=("0000180f-0000-1000-8000-00805f9b34fb",),
+            service_uuids=("7b9a0001-6e4f-4b2d-a9c8-4f2e6f5d1000",),
+            is_tiresias=True,
         )
         self.connect_attempts = []
         self.shutdown_called = False
+        self.parameter_writes = []
+        self.session = device_session()
 
     def scan(self):
         self.scan_started.emit()
@@ -43,6 +54,7 @@ class FakeController(QObject):
         self.connect_attempts.append(address)
         self.connection_started.emit(address)
         self.connection_succeeded.emit(address)
+        self.session_loaded.emit(self.session)
         return True
 
     def disconnect(self):
@@ -52,6 +64,17 @@ class FakeController(QObject):
 
     def shutdown(self):
         self.shutdown_called = True
+
+    def read_parameter(self, parameter_id):
+        self.parameter_read_started.emit(parameter_id)
+        self.parameter_read.emit(ParameterValue(parameter_id, 0x01000000, 4))
+        return True
+
+    def write_parameter(self, parameter_id, value):
+        self.parameter_writes.append((parameter_id, value))
+        self.parameter_write_started.emit(parameter_id, value)
+        self.parameter_written.emit(ParameterValue(parameter_id, value, 5))
+        return True
 
 
 class DeviceDiscoveryScreenTest(unittest.TestCase):
@@ -86,6 +109,32 @@ class DeviceDiscoveryScreenTest(unittest.TestCase):
             self.controller.connect_attempts, [self.controller.device.address]
         )
         self.assertTrue(connect_button.isHidden())
+
+    def test_connected_session_displays_dis_and_persists_selected_parameter(self):
+        """Navigate from a ready session to ID-based flash parameter control."""
+        self.controller.connection_succeeded.emit(self.controller.device.address)
+        self.controller.session_loaded.emit(self.controller.session)
+        control = self.window.device_control_screen
+        table = control.findChild(QTableWidget, "parameterTable")
+        value_input = control.findChild(QDoubleSpinBox, "parameterValueInput")
+        write_button = control.findChild(QPushButton, "writeParameterButton")
+
+        self.window.show()
+        self.app.processEvents()
+        self.assertTrue(control._title.isVisible())
+        self.assertEqual(control._board_values["model"].text(), "Tiresias DK")
+        self.assertTrue(control._board_values["model"].isVisible())
+        self.assertEqual(control._board_values["firmware"].text(), "0.1.0")
+        self.assertTrue(control._board_values["firmware"].isVisible())
+        self.assertEqual(table.rowCount(), 1)
+        self.assertEqual(table.item(0, 1).text(), "PHASE1")
+        self.assertEqual(table.item(0, 5).text(), "2.000000")
+        table.selectRow(0)
+        value_input.setValue(3.0)
+        write_button.click()
+
+        self.assertEqual(self.controller.parameter_writes, [(1, 0x01800000)])
+        self.assertIn("Persisted in internal flash", control._message.text())
 
     def test_closing_window_shuts_down_controller(self):
         """Ensure closing the owner window shuts down its controller."""

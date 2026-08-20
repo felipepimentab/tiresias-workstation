@@ -16,12 +16,15 @@ from typing import Any
 from PySide6.QtCore import QObject, Signal
 
 from tiresias_workstation.adapters.bleak_adapter import BleakDeviceTransport
+from tiresias_workstation.adapters.tiresias_protocol import TiresiasProtocolClient
 from tiresias_workstation.domain.devices import DeviceTransport, DiscoveredDevice
+from tiresias_workstation.domain.tiresias import TiresiasClient
 
 # Factories make the controller independently testable with an in-memory
 # transport while ensuring the real Bleak transport is created on its own loop.
+ClientFactory = Callable[[], TiresiasClient]
 TransportFactory = Callable[[], DeviceTransport]
-OperationFactory = Callable[[DeviceTransport], Coroutine[Any, Any, Any]]
+OperationFactory = Callable[[TiresiasClient], Coroutine[Any, Any, Any]]
 
 
 class BleController(QObject):
@@ -43,6 +46,12 @@ class BleController(QObject):
             failed connection or disconnection operation.
         disconnection_started(str): Emits the connected device address.
         disconnected(str): Emits once when the active connection closes.
+        session_loaded(object): Emits a validated :class:`DeviceSession` after
+            connection initialization.
+        parameter_read(object): Emits a correlated :class:`ParameterValue`.
+        parameter_written(object): Emits only after firmware persistence has
+            completed successfully.
+        parameter_operation_failed(int, str): Emits a parameter ID and error.
 
     Attributes:
         _state_lock: Protects controller state shared by the Qt and BLE threads.
@@ -62,11 +71,18 @@ class BleController(QObject):
     connection_failed = Signal(str, str)
     disconnection_started = Signal(str)
     disconnected = Signal(str)
+    session_loaded = Signal(object)
+    parameter_read_started = Signal(int)
+    parameter_read = Signal(object)
+    parameter_write_started = Signal(int, int)
+    parameter_written = Signal(object)
+    parameter_operation_failed = Signal(int, str)
 
     def __init__(
         self,
         *,
         transport_factory: TransportFactory | None = None,
+        client_factory: ClientFactory | None = None,
         scan_timeout: float = 5.0,
         connection_timeout: float = 15.0,
     ) -> None:
@@ -74,8 +90,10 @@ class BleController(QObject):
 
         Args:
             transport_factory: Optional zero-argument factory used to create the
-                transport inside the BLE thread. Defaults to
-                :class:`BleakDeviceTransport`.
+                generic BLE transport inside the worker thread.
+            client_factory: Optional zero-argument high-level client factory for
+                tests or alternate board protocol implementations. Mutually
+                exclusive with ``transport_factory``.
             scan_timeout: Duration of each discovery scan in seconds.
             connection_timeout: Maximum duration of a connection attempt in
                 seconds.
@@ -83,19 +101,27 @@ class BleController(QObject):
         Raises:
             RuntimeError: If the worker does not become ready within two seconds
                 or if transport construction fails.
+            ValueError: If both factory extension points are supplied.
         """
         super().__init__()
-        self._transport_factory = transport_factory or BleakDeviceTransport
+        if transport_factory is not None and client_factory is not None:
+            raise ValueError("Provide either transport_factory or client_factory.")
+        selected_transport_factory = transport_factory or BleakDeviceTransport
+        self._transport_factory = client_factory or (
+            lambda: TiresiasProtocolClient(selected_transport_factory())
+        )
         self._scan_timeout = scan_timeout
         self._connection_timeout = connection_timeout
 
         self._state_lock = Lock()
         self._ready = Event()
         self._loop: asyncio.AbstractEventLoop | None = None
-        self._transport: DeviceTransport | None = None
+        self._transport: TiresiasClient | None = None
         self._startup_error: BaseException | None = None
         self._active_future: Future[Any] | None = None
         self._connected_address: str | None = None
+        self._pending_connection_address: str | None = None
+        self._pending_connection_lost = False
         self._closed = False
 
         self._thread = Thread(
@@ -141,11 +167,8 @@ class BleController(QObject):
             ``True`` if the operation was scheduled, otherwise ``False``.
         """
         future = self._schedule(
-            lambda transport: transport.connect(
-                address,
-                self._transport_disconnected,
-                timeout=self._connection_timeout,
-            )
+            lambda transport: self._connect_and_read_session(transport, address),
+            pending_connection_address=address,
         )
         if future is None:
             return False
@@ -153,6 +176,57 @@ class BleController(QObject):
         self.connection_started.emit(address)
         future.add_done_callback(
             lambda completed: self._connection_completed(address, completed)
+        )
+        return True
+
+    def read_parameter(self, parameter_id: int) -> bool:
+        """Request the current persisted value of one catalog parameter.
+
+        Args:
+            parameter_id: Stable catalog identifier, never a DSP address.
+
+        Returns:
+            ``True`` if scheduled, otherwise ``False``.
+        """
+        with self._state_lock:
+            if self._connected_address is None:
+                return False
+        future = self._schedule(
+            lambda transport: transport.read_parameter(parameter_id)
+        )
+        if future is None:
+            return False
+        self.parameter_read_started.emit(parameter_id)
+        future.add_done_callback(
+            lambda completed: self._parameter_completed(
+                parameter_id, completed, is_write=False
+            )
+        )
+        return True
+
+    def write_parameter(self, parameter_id: int, value: int) -> bool:
+        """Request validation and persistent storage of one parameter value.
+
+        Args:
+            parameter_id: Stable catalog identifier, never a DSP address.
+            value: Signed Q5.23 raw value validated against the catalog.
+
+        Returns:
+            ``True`` if scheduled, otherwise ``False``.
+        """
+        with self._state_lock:
+            if self._connected_address is None:
+                return False
+        future = self._schedule(
+            lambda transport: transport.write_parameter(parameter_id, value)
+        )
+        if future is None:
+            return False
+        self.parameter_write_started.emit(parameter_id, value)
+        future.add_done_callback(
+            lambda completed: self._parameter_completed(
+                parameter_id, completed, is_write=True
+            )
         )
         return True
 
@@ -242,12 +316,19 @@ class BleController(QObject):
             asyncio.set_event_loop(None)
             loop.close()
 
-    def _schedule(self, operation: OperationFactory) -> Future[Any] | None:
+    def _schedule(
+        self,
+        operation: OperationFactory,
+        *,
+        pending_connection_address: str | None = None,
+    ) -> Future[Any] | None:
         """Submit one transport coroutine while enforcing serialization.
 
         Args:
             operation: Factory that receives the loop-owned transport and
                 returns the coroutine to execute.
+            pending_connection_address: Address whose disconnect callback must
+                be tracked before the connect coroutine can start.
 
         Returns:
             A thread-safe future for the coroutine, or ``None`` when scheduling
@@ -261,6 +342,9 @@ class BleController(QObject):
             if self._loop is None or self._transport is None:
                 return None
 
+            if pending_connection_address is not None:
+                self._pending_connection_address = pending_connection_address
+                self._pending_connection_lost = False
             future = asyncio.run_coroutine_threadsafe(
                 operation(self._transport), self._loop
             )
@@ -304,16 +388,91 @@ class BleController(QObject):
         if not self._finish(future):
             return
         try:
-            future.result()
+            session = future.result()
         except FutureCancelledError:
+            with self._state_lock:
+                if self._pending_connection_address == address:
+                    self._pending_connection_address = None
+                    self._pending_connection_lost = False
             return
         except Exception as error:
+            with self._state_lock:
+                if self._pending_connection_address == address:
+                    self._pending_connection_address = None
+                    self._pending_connection_lost = False
             self.connection_failed.emit(address, self._error_message(error))
             return
 
         with self._state_lock:
-            self._connected_address = address
+            connection_lost = (
+                self._pending_connection_address == address
+                and self._pending_connection_lost
+            )
+            self._pending_connection_address = None
+            self._pending_connection_lost = False
+            if not connection_lost:
+                self._connected_address = address
+        if connection_lost:
+            self.disconnected.emit(address)
+            return
         self.connection_succeeded.emit(address)
+        self.session_loaded.emit(session)
+
+    async def _connect_and_read_session(
+        self,
+        transport: TiresiasClient,
+        address: str,
+    ) -> Any:
+        """Establish a link and validate the complete custom-service session.
+
+        Failed initialization closes the BLE link so UI connection state never
+        claims that an unsupported or malformed board is ready.
+
+        Args:
+            transport: Loop-owned high-level device client.
+            address: Platform identifier retained by the latest scan.
+
+        Returns:
+            Validated :class:`~tiresias_workstation.domain.tiresias.DeviceSession`.
+        """
+        try:
+            await transport.connect(
+                address,
+                self._transport_disconnected,
+                timeout=self._connection_timeout,
+            )
+            async with asyncio.timeout(self._connection_timeout):
+                return await transport.read_session()
+        except BaseException:
+            try:
+                await transport.disconnect()
+            except Exception:
+                pass
+            raise
+
+    def _parameter_completed(
+        self,
+        parameter_id: int,
+        future: Future[Any],
+        *,
+        is_write: bool,
+    ) -> None:
+        """Publish one correlated read or persistent-write terminal result."""
+        if not self._finish(future):
+            return
+        try:
+            value = future.result()
+        except FutureCancelledError:
+            return
+        except Exception as error:
+            self.parameter_operation_failed.emit(
+                parameter_id, self._error_message(error)
+            )
+            return
+        if is_write:
+            self.parameter_written.emit(value)
+        else:
+            self.parameter_read.emit(value)
 
     def _disconnection_completed(self, address: str, future: Future[Any]) -> None:
         """Publish the outcome of an explicit disconnection request.
@@ -335,6 +494,10 @@ class BleController(QObject):
 
     def _transport_disconnected(self, address: str) -> None:
         """Receive Bleak's backend disconnection callback."""
+        with self._state_lock:
+            if self._pending_connection_address == address:
+                self._pending_connection_lost = True
+                return
         self._publish_disconnected(address)
 
     def _publish_disconnected(self, address: str) -> None:
@@ -347,6 +510,9 @@ class BleController(QObject):
             if self._closed or self._connected_address != address:
                 return
             self._connected_address = None
+            active_future = self._active_future
+        if active_future is not None and not active_future.done():
+            active_future.cancel()
         self.disconnected.emit(address)
 
     @staticmethod

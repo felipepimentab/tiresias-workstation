@@ -18,13 +18,14 @@ The application shall:
 
 - Discover and connect to a Tiresias DK over BLE.
 - Expose the board's connection state and useful device information.
-- Read and write the board's custom GATT service.
-- Select and transfer one of ten bundled DSP parameter tables.
-- Report transfer progress, completion, and actionable errors.
+- Validate the board's custom-service protocol, state, and DSP catalog.
+- Read and persist cataloged DSP parameters by stable ID.
+- Report correlated operation progress, completion, and actionable errors.
 
 Future versions shall support:
 
-- Editing DSP parameters instead of selecting only fixed tables.
+- Applying the persisted parameter image to DSP hardware.
+- Selecting and transferring the ten bundled DSP parameter tables.
 - Creating a fitting from an audiogram.
 - Using pyClarity's CAMEQ implementation to generate prescriptions and SigmaStudio
   parameter tables.
@@ -44,4 +45,3 @@ Future versions shall support:
 The first releases are engineering and characterization tools. They are not a
 clinical fitting system and shall not imply that a selected prescription has
 been clinically validated for an individual user.
-
