@@ -59,8 +59,8 @@ class DeviceDiscoveryScreen(QWidget):
         self.setStyleSheet(_STYLE_SHEET)
 
         page_layout = QVBoxLayout(self)
-        page_layout.setContentsMargins(36, 28, 36, 32)
-        page_layout.setSpacing(18)
+        page_layout.setContentsMargins(36, 32, 36, 30)
+        page_layout.setSpacing(16)
 
         heading_row = QHBoxLayout()
         heading_copy = QVBoxLayout()
@@ -81,12 +81,12 @@ class DeviceDiscoveryScreen(QWidget):
         self._status_badge = QLabel()
         self._status_badge.setObjectName("statusBadge")
         self._status_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._status_badge.setMinimumWidth(136)
+        self._status_badge.setMinimumWidth(112)
         heading_row.addWidget(self._status_badge, 0, Qt.AlignmentFlag.AlignTop)
         page_layout.addLayout(heading_row)
 
         toolbar = QHBoxLayout()
-        toolbar.setSpacing(12)
+        toolbar.setSpacing(10)
 
         self._scan_button = QPushButton("Scan for devices")
         self._scan_button.setObjectName("scanButton")
@@ -96,7 +96,7 @@ class DeviceDiscoveryScreen(QWidget):
         self._scan_progress = QProgressBar()
         self._scan_progress.setObjectName("scanProgress")
         self._scan_progress.setRange(0, 0)
-        self._scan_progress.setFixedWidth(120)
+        self._scan_progress.setFixedWidth(96)
         self._scan_progress.setTextVisible(False)
         self._scan_progress.hide()
         toolbar.addWidget(self._scan_progress)
@@ -140,8 +140,8 @@ class DeviceDiscoveryScreen(QWidget):
         action_card = QFrame()
         action_card.setObjectName("actionCard")
         action_layout = QHBoxLayout(action_card)
-        action_layout.setContentsMargins(18, 14, 14, 14)
-        action_layout.setSpacing(12)
+        action_layout.setContentsMargins(16, 12, 12, 12)
+        action_layout.setSpacing(10)
 
         selection_copy = QVBoxLayout()
         selection_copy.setSpacing(2)
@@ -396,7 +396,7 @@ class DeviceDiscoveryScreen(QWidget):
         name_item = QTableWidgetItem(self._display_name(device))
         name_item.setData(Qt.ItemDataRole.UserRole, device.address)
         if device.name is None:
-            name_item.setForeground(QColor("#718096"))
+            name_item.setForeground(QColor("#8e8e93"))
 
         address_item = QTableWidgetItem(device.address)
         signal_item = QTableWidgetItem(self._format_signal(device.rssi))
@@ -460,7 +460,12 @@ class DeviceDiscoveryScreen(QWidget):
             text: Human-readable status label.
             state: Stylesheet state: ``idle``, ``working``, or ``connected``.
         """
-        self._status_badge.setText(text)
+        indicator = {
+            "idle": "○",
+            "working": "●",
+            "connected": "●",
+        }[state]
+        self._status_badge.setText(f"{indicator}  {text}")
         self._status_badge.setProperty("connectionState", state)
         self._status_badge.style().unpolish(self._status_badge)
         self._status_badge.style().polish(self._status_badge)
@@ -506,113 +511,116 @@ class DeviceDiscoveryScreen(QWidget):
 
 _STYLE_SHEET = """
 #deviceDiscoveryScreen {
-    background: #f5f7fa;
-    color: #172033;
+    background: #ffffff;
+    color: #202123;
+    font-family: "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
 }
 #pageTitle {
-    color: #172033;
-    font-size: 26px;
-    font-weight: 700;
+    color: #202123;
+    font-size: 24px;
+    font-weight: 600;
 }
 #pageSubtitle, #resultSummary, #messageLabel {
-    color: #647089;
+    color: #6e6e73;
     font-size: 13px;
 }
 #messageLabel[error="true"] {
-    color: #b42318;
+    color: #c5221f;
 }
 #statusBadge {
-    border-radius: 14px;
+    background: transparent;
+    border: none;
     font-size: 12px;
-    font-weight: 600;
-    padding: 7px 13px;
+    font-weight: 500;
+    padding: 6px 4px;
 }
 #statusBadge[connectionState="idle"] {
-    background: #e8edf4;
-    color: #526078;
+    color: #8e8e93;
 }
 #statusBadge[connectionState="working"] {
-    background: #fff2cc;
-    color: #805b10;
+    color: #b26800;
 }
 #statusBadge[connectionState="connected"] {
-    background: #d9f5e5;
-    color: #16794c;
+    color: #16803a;
 }
 #deviceCard, #actionCard {
     background: #ffffff;
-    border: 1px solid #dfe4ec;
-    border-radius: 10px;
+    border: 1px solid #dedede;
+    border-radius: 8px;
 }
 #deviceTable {
     background: transparent;
-    alternate-background-color: #f8fafc;
+    alternate-background-color: #fbfbfb;
     border: none;
-    border-radius: 10px;
-    color: #243047;
-    selection-background-color: #e3edff;
-    selection-color: #173b79;
+    border-radius: 8px;
+    color: #2c2c2e;
+    font-size: 12px;
+    selection-background-color: #eeeeef;
+    selection-color: #171717;
 }
 #deviceTable::item {
     border: none;
-    padding: 8px 10px;
+    padding: 7px 10px;
 }
 #deviceTable QHeaderView::section {
-    background: #eef2f7;
+    background: #fafafa;
     border: none;
-    border-bottom: 1px solid #dfe4ec;
-    color: #526078;
+    border-bottom: 1px solid #e3e3e3;
+    color: #6e6e73;
     font-size: 11px;
-    font-weight: 700;
-    padding: 10px;
-    text-transform: uppercase;
+    font-weight: 500;
+    padding: 9px 10px;
 }
 #selectionLabel {
-    color: #7a8599;
+    color: #8e8e93;
     font-size: 11px;
-    font-weight: 700;
+    font-weight: 500;
 }
 #selectionDetail {
-    color: #243047;
+    color: #2c2c2e;
     font-size: 13px;
-    font-weight: 600;
+    font-weight: 500;
 }
 QPushButton {
-    border-radius: 7px;
+    border-radius: 6px;
     font-size: 13px;
-    font-weight: 600;
-    min-height: 34px;
-    padding: 0 16px;
+    font-weight: 500;
+    min-height: 32px;
+    padding: 0 14px;
 }
 #scanButton, #connectButton {
-    background: #2864dc;
-    border: 1px solid #2864dc;
+    background: #202123;
+    border: 1px solid #202123;
     color: #ffffff;
 }
 #scanButton:hover, #connectButton:hover {
-    background: #1f55c0;
+    background: #343437;
+    border-color: #343437;
+}
+#scanButton:pressed, #connectButton:pressed {
+    background: #111111;
 }
 #disconnectButton {
-    background: #ffffff;
-    border: 1px solid #cad2df;
-    color: #34415a;
+    background: #f7f7f7;
+    border: 1px solid #d5d5d5;
+    color: #2c2c2e;
 }
 #disconnectButton:hover {
-    background: #f2f5f9;
+    background: #ededed;
 }
 QPushButton:disabled {
-    background: #e7ebf1;
-    border-color: #e7ebf1;
-    color: #98a2b3;
+    background: #f1f1f1;
+    border-color: #e5e5e5;
+    color: #a2a2a6;
 }
 #scanProgress {
-    background: #e8edf4;
+    background: #e7e7e7;
     border: none;
-    border-radius: 3px;
-    max-height: 6px;
+    border-radius: 2px;
+    max-height: 4px;
 }
 #scanProgress::chunk {
-    background: #2864dc;
-    border-radius: 3px;
+    background: #6e6e73;
+    border-radius: 2px;
 }
 """
