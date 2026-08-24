@@ -18,13 +18,13 @@ The application shall:
 
 - Discover and connect to a Tiresias DK over BLE.
 - Expose the board's connection state and useful device information.
-- Validate the board's custom-service protocol, state, and DSP catalog.
-- Read and persist cataloged DSP parameters by stable ID.
+- Validate the board's custom-service protocol, state, and fixed DSP contract.
+- Read fixed DSP parameters and persist supported scalars by stable ID.
 - Report correlated operation progress, completion, and actionable errors.
 
 Future versions shall support:
 
-- Applying the persisted parameter image to DSP hardware.
+- Generating the firmware/workstation contract from a SigmaStudio export.
 - Selecting and transferring the ten bundled DSP parameter tables.
 - Creating a fitting from an audiogram.
 - Using pyClarity's CAMEQ implementation to generate prescriptions and SigmaStudio

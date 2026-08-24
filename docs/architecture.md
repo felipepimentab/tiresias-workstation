@@ -40,9 +40,10 @@ Bleak, pyClarity, or a particular board protocol.
 ### Adapters
 
 - **Bleak transport:** scanning, connections, GATT reads/writes, and notifications.
-- **Tiresias protocol:** UUIDs, fixed record decoding, catalog integrity,
+- **Tiresias protocol:** UUIDs, fixed record decoding, contract compatibility,
   transaction correlation, and firmware result translation.
-- **Bundled catalog:** loads and validates the ten MVP parameter tables.
+- **DSP contract:** fixed block and parameter names, IDs, word counts, and flags.
+- **Bundled prescription catalog:** loads and validates the ten MVP parameter tables.
 - **Future fitting engines:** adapt pyClarity/CAMEQ, NAL-NL2, or other rules to a
   common prescription interface.
 

@@ -4,7 +4,7 @@ PySide6 and Bleak desktop application for the Tiresias DK.
 
 The application identifies a Tiresias DK by its advertised custom-service UUID,
 connects, displays standard and custom device information, validates the DSP
-parameter catalog, and supports stable-ID reads and persistent writes. BLE work
+parameter contract, and supports stable-ID reads and persistent scalar writes. BLE work
 runs outside the UI thread so the window remains responsive.
 
 Product requirements, architecture, and the development roadmap are indexed in
@@ -79,6 +79,7 @@ src/tiresias_workstation/
 │   └── ble_controller.py        Background asyncio and Qt signal coordinator
 ├── domain/                      Platform-neutral models and interfaces
 │   ├── devices.py               BLE device model and transport protocol
+│   ├── dsp_contract.py          Fixed block names, parameter names, IDs, and metadata
 │   └── tiresias.py              Service models and high-level client protocol
 ├── presentation/                Qt widgets and windows
 │   ├── device_discovery_screen.py
