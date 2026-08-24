@@ -72,7 +72,7 @@ class DspContractTests(unittest.TestCase):
         )
 
     def test_public_metadata_matches_golden_contract_crc(self):
-        """Pin the byte representation advertised by firmware protocol v2."""
+        """Pin the byte representation advertised by firmware protocol v3."""
         entries = b"".join(
             bytes(
                 (

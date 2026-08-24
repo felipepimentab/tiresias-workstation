@@ -9,8 +9,6 @@ from dataclasses import dataclass
 from enum import IntEnum, IntFlag
 
 
-DSP_PARAMETER_CONTRACT_ID = 0x54525001
-DSP_PARAMETER_CONTRACT_VERSION = 1
 DSP_PARAMETER_CONTRACT_CRC32 = 0xF62C1808
 
 

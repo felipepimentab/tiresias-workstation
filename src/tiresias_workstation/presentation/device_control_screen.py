@@ -226,9 +226,7 @@ class DeviceControlScreen(QWidget):
         self._board_values["hardware"].setText(info.hardware_revision or "Not reported")
         self._board_values["firmware"].setText(info.firmware_revision or "Not reported")
         self._board_values["protocol"].setText(f"{protocol.major}.{protocol.minor}")
-        self._board_values["layout"].setText(
-            f"0x{protocol.contract_id:08X} · v{protocol.contract_version}"
-        )
+        self._board_values["layout"].setText(f"CRC32 0x{protocol.contract_crc32:08X}")
         self._board_values["boot"].setText(str(protocol.boot_id))
         self._board_values["revision"].setText(str(protocol.parameter_revision))
         deferred = bool(

@@ -11,8 +11,6 @@ from tiresias_workstation.application.ble_controller import BleController
 from tiresias_workstation.domain.devices import DiscoveredDevice
 from tiresias_workstation.domain.dsp_contract import (
     DSP_PARAMETER_CONTRACT_CRC32,
-    DSP_PARAMETER_CONTRACT_ID,
-    DSP_PARAMETER_CONTRACT_VERSION,
     DSP_PARAMETERS,
 )
 from tiresias_workstation.domain.tiresias import (
@@ -33,14 +31,11 @@ def device_session():
     return DeviceSession(
         DeviceInformation("Tiresias", "Tiresias DK", "1", "A", "0.1.0"),
         ProtocolInformation(
-            2,
+            3,
             0,
             ProtocolCapability(15),
             12,
             16,
-            DSP_PARAMETER_CONTRACT_VERSION,
-            len(DSP_PARAMETERS),
-            DSP_PARAMETER_CONTRACT_ID,
             DSP_PARAMETER_CONTRACT_CRC32,
             2,
             3,

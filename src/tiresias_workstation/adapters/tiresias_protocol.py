@@ -13,8 +13,6 @@ from dataclasses import replace
 from tiresias_workstation.domain.devices import DeviceTransport, DiscoveredDevice
 from tiresias_workstation.domain.dsp_contract import (
     DSP_PARAMETER_CONTRACT_CRC32,
-    DSP_PARAMETER_CONTRACT_ID,
-    DSP_PARAMETER_CONTRACT_VERSION,
     DSP_PARAMETERS,
     DSP_PARAMETERS_BY_ID,
     DspParameterDefinition,
@@ -45,12 +43,12 @@ SERIAL_NUMBER_UUID = "00002a25-0000-1000-8000-00805f9b34fb"
 HARDWARE_REVISION_UUID = "00002a27-0000-1000-8000-00805f9b34fb"
 FIRMWARE_REVISION_UUID = "00002a26-0000-1000-8000-00805f9b34fb"
 
-_PROTOCOL_INFO = struct.Struct("<BBHIHHHHIIII")
+_PROTOCOL_INFO = struct.Struct("<BBHIHHIII")
 _STATUS = struct.Struct("<BBBBIIBBH")
 _REQUEST = struct.Struct("<BBIBBi")
 _RESPONSE = struct.Struct("<BBIBBiI")
 
-_PROTOCOL_MAJOR = 2
+_PROTOCOL_MAJOR = 3
 _GET_PARAMETER = 1
 _SET_PARAMETER = 2
 
@@ -326,7 +324,9 @@ class TiresiasProtocolClient:
 def decode_protocol_information(payload: bytes) -> ProtocolInformation:
     """Decode and validate fixed-contract Protocol Information."""
     if len(payload) != _PROTOCOL_INFO.size:
-        raise ProtocolError("Protocol Information must be 32 bytes.")
+        raise ProtocolError(
+            f"Protocol Information must be {_PROTOCOL_INFO.size} bytes."
+        )
     (
         major,
         minor,
@@ -334,9 +334,6 @@ def decode_protocol_information(payload: bytes) -> ProtocolInformation:
         capabilities,
         maximum_request,
         maximum_response,
-        contract_version,
-        parameter_count,
-        contract_id,
         contract_crc32,
         boot_id,
         revision,
@@ -345,12 +342,7 @@ def decode_protocol_information(payload: bytes) -> ProtocolInformation:
         raise ProtocolError(f"Unsupported Tiresias protocol {major}.{minor}.")
     if maximum_request < _REQUEST.size or maximum_response < _RESPONSE.size:
         raise ProtocolError("Device request or response capacity is too small.")
-    if (
-        contract_version != DSP_PARAMETER_CONTRACT_VERSION
-        or parameter_count != len(DSP_PARAMETERS)
-        or contract_id != DSP_PARAMETER_CONTRACT_ID
-        or contract_crc32 != DSP_PARAMETER_CONTRACT_CRC32
-    ):
+    if contract_crc32 != DSP_PARAMETER_CONTRACT_CRC32:
         raise ProtocolError("Device uses an incompatible DSP parameter contract.")
     required = (
         ProtocolCapability.GET_PARAMETER
@@ -368,9 +360,6 @@ def decode_protocol_information(payload: bytes) -> ProtocolInformation:
         parsed_capabilities,
         maximum_request,
         maximum_response,
-        contract_version,
-        parameter_count,
-        contract_id,
         contract_crc32,
         boot_id,
         revision,

@@ -17,8 +17,6 @@ from tiresias_workstation.adapters.tiresias_protocol import (
 from tiresias_workstation.domain.devices import DiscoveredDevice
 from tiresias_workstation.domain.dsp_contract import (
     DSP_PARAMETER_CONTRACT_CRC32,
-    DSP_PARAMETER_CONTRACT_ID,
-    DSP_PARAMETER_CONTRACT_VERSION,
     DSP_PARAMETERS,
 )
 from tiresias_workstation.domain.tiresias import ProtocolError, RequestError
@@ -34,16 +32,13 @@ class FakeGattTransport:
             MODEL_NUMBER_UUID: b"Tiresias DK",
             FIRMWARE_REVISION_UUID: b"0.1.0",
             PROTOCOL_INFO_UUID: struct.pack(
-                "<BBHIHHHHIIII",
-                2,
+                "<BBHIHHIII",
+                3,
                 0,
-                32,
+                24,
                 15,
                 12,
                 16,
-                DSP_PARAMETER_CONTRACT_VERSION,
-                len(DSP_PARAMETERS),
-                DSP_PARAMETER_CONTRACT_ID,
                 DSP_PARAMETER_CONTRACT_CRC32,
                 42,
                 3,
@@ -193,15 +188,15 @@ class TiresiasProtocolClientTest(unittest.IsolatedAsyncioTestCase):
             await self.client.write_parameter(11, 0x01000000)
 
     def test_rejects_contract_mismatch(self):
-        """Fail the handshake when fixed metadata differs from the app."""
+        """Fail the handshake when the catalog fingerprint differs."""
         fields = list(
             struct.unpack(
-                "<BBHIHHHHIIII",
+                "<BBHIHHIII",
                 self.transport.values[PROTOCOL_INFO_UUID],
             )
         )
-        fields[9] ^= 1
-        payload = struct.pack("<BBHIHHHHIIII", *fields)
+        fields[6] ^= 1
+        payload = struct.pack("<BBHIHHIII", *fields)
 
         with self.assertRaisesRegex(ProtocolError, "incompatible DSP"):
             decode_protocol_information(payload)

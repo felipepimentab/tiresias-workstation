@@ -66,16 +66,13 @@ class DeviceInformation:
 
 @dataclass(frozen=True, slots=True)
 class ProtocolInformation:
-    """Compatibility and fixed-contract metadata reported by the device."""
+    """Protocol capabilities and DSP contract fingerprint reported by the device."""
 
     major: int
     minor: int
     capabilities: ProtocolCapability
     maximum_request_size: int
     maximum_response_size: int
-    contract_version: int
-    parameter_count: int
-    contract_id: int
     contract_crc32: int
     boot_id: int
     parameter_revision: int
