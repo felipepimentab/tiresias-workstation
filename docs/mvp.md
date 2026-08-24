@@ -42,7 +42,7 @@ changing the supported scalar controls.
 ## Acceptance criteria
 
 This architecture-validation MVP is complete when a user can connect to a
-supported board, validate protocol and contract identity, read every exposed
+supported board, validate the protocol and contract fingerprint, read every exposed
 parameter, and persist every writable scalar without restarting either side.
 Each word operation must have an unambiguous correlated result, and each write
 must have a firmware-confirmed revision.
