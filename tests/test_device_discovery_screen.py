@@ -6,6 +6,7 @@ from PySide6.QtCore import QObject, Signal
 from PySide6.QtWidgets import QApplication, QDoubleSpinBox, QPushButton, QTableWidget
 
 from tiresias_workstation.domain.devices import DiscoveredDevice
+from tiresias_workstation.domain.dsp_contract import DSP_PARAMETERS_BY_ID
 from test_ble_controller import device_session
 from tiresias_workstation.domain.tiresias import ParameterValue
 from tiresias_workstation.presentation.main_window import MainWindow
@@ -67,13 +68,18 @@ class FakeController(QObject):
 
     def read_parameter(self, parameter_id):
         self.parameter_read_started.emit(parameter_id)
-        self.parameter_read.emit(ParameterValue(parameter_id, 0x01000000, 4))
+        definition = DSP_PARAMETERS_BY_ID[parameter_id]
+        if definition.integer:
+            words = (definition.default,)
+        else:
+            words = (0x00800000,) * definition.word_count
+        self.parameter_read.emit(ParameterValue(parameter_id, words, 4))
         return True
 
     def write_parameter(self, parameter_id, value):
         self.parameter_writes.append((parameter_id, value))
         self.parameter_write_started.emit(parameter_id, value)
-        self.parameter_written.emit(ParameterValue(parameter_id, value, 5))
+        self.parameter_written.emit(ParameterValue(parameter_id, (value,), 5))
         return True
 
 
@@ -126,15 +132,18 @@ class DeviceDiscoveryScreenTest(unittest.TestCase):
         self.assertTrue(control._board_values["model"].isVisible())
         self.assertEqual(control._board_values["firmware"].text(), "0.1.0")
         self.assertTrue(control._board_values["firmware"].isVisible())
-        self.assertEqual(table.rowCount(), 1)
-        self.assertEqual(table.item(0, 1).text(), "PHASE1")
-        self.assertEqual(table.item(0, 5).text(), "2.000000")
-        table.selectRow(0)
+        self.assertEqual(table.rowCount(), 15)
+        self.assertEqual(table.item(10, 1).text(), "Phase Comp Gain 1")
+        self.assertEqual(table.item(10, 2).text(), "Gain")
+        self.assertEqual(table.item(10, 5).text(), "1.000000")
+        self.assertTrue(table.item(2, 5).text().startswith("34 words ·"))
+        self.assertIn("[33]", table.item(2, 5).toolTip())
+        table.selectRow(10)
         value_input.setValue(3.0)
         write_button.click()
 
-        self.assertEqual(self.controller.parameter_writes, [(1, 0x01800000)])
-        self.assertIn("Persisted in internal flash", control._message.text())
+        self.assertEqual(self.controller.parameter_writes, [(11, 0x01800000)])
+        self.assertIn("Persisted", control._message.text())
 
     def test_closing_window_shuts_down_controller(self):
         """Ensure closing the owner window shuts down its controller."""

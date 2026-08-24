@@ -9,6 +9,7 @@ from enum import IntEnum, IntFlag
 from typing import Protocol
 
 from tiresias_workstation.domain.devices import DiscoveredDevice
+from tiresias_workstation.domain.dsp_contract import DspParameterDefinition
 
 
 class ProtocolCapability(IntFlag):
@@ -18,27 +19,6 @@ class ProtocolCapability(IntFlag):
     SET_PARAMETER = 2
     PERSISTENCE = 4
     DSP_APPLY_DEFERRED = 8
-
-
-class ParameterAccess(IntFlag):
-    """Access and application properties of a catalog parameter."""
-
-    READABLE = 1
-    WRITABLE = 2
-    PERSISTENT = 4
-    LIVE = 8
-
-
-class ParameterEncoding(IntEnum):
-    """Value encoding identifiers carried by the wire catalog."""
-
-    Q5_23 = 1
-
-
-class ParameterUnit(IntEnum):
-    """Unit identifiers carried by the wire catalog."""
-
-    LINEAR = 1
 
 
 class DeviceState(IntEnum):
@@ -70,6 +50,7 @@ class RequestResult(IntEnum):
     BUSY = 5
     PERSIST_FAILED = 6
     INTERNAL = 7
+    DSP_FAILED = 8
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,17 +66,17 @@ class DeviceInformation:
 
 @dataclass(frozen=True, slots=True)
 class ProtocolInformation:
-    """Compatibility and capacity metadata for the Tiresias service."""
+    """Compatibility and fixed-contract metadata reported by the device."""
 
     major: int
     minor: int
     capabilities: ProtocolCapability
     maximum_request_size: int
     maximum_response_size: int
-    catalog_entry_size: int
-    catalog_count: int
-    layout_id: int
-    catalog_crc32: int
+    contract_version: int
+    parameter_count: int
+    contract_id: int
+    contract_crc32: int
     boot_id: int
     parameter_revision: int
 
@@ -110,57 +91,37 @@ class DeviceStatus:
     parameter_revision: int
     last_transaction_id: int
     last_parameter_id: int
-
-
-@dataclass(frozen=True, slots=True)
-class ParameterDefinition:
-    """One safe, stable DSP parameter exposed by the firmware catalog."""
-
-    parameter_id: int
-    access: ParameterAccess
-    encoding: ParameterEncoding
-    dsp_address: int
-    word_count: int
-    unit: ParameterUnit
-    minimum: int
-    maximum: int
-    default: int
-    step: int
-    name: str
-
-    def accepts(self, value: int) -> bool:
-        """Return whether ``value`` satisfies catalog bounds and step.
-
-        Args:
-            value: Encoded signed 32-bit parameter value.
-
-        Returns:
-            ``True`` when the value may be sent to the device.
-        """
-        return (
-            self.minimum <= value <= self.maximum
-            and self.step > 0
-            and (value - self.minimum) % self.step == 0
-        )
+    last_word_index: int
 
 
 @dataclass(frozen=True, slots=True)
 class DeviceSession:
-    """Identity, compatibility, status, and catalog read after connection."""
+    """Identity, compatibility, status, and fixed parameter definitions."""
 
     information: DeviceInformation
     protocol: ProtocolInformation
     status: DeviceStatus
-    catalog: tuple[ParameterDefinition, ...]
+    parameters: tuple[DspParameterDefinition, ...]
 
 
 @dataclass(frozen=True, slots=True)
 class ParameterValue:
-    """A correlated parameter read or persistent write result."""
+    """A correlated complete parameter read or scalar write result."""
 
     parameter_id: int
-    value: int
+    words: tuple[int, ...]
     parameter_revision: int
+
+    @property
+    def value(self) -> int:
+        """Return the only word of a scalar parameter.
+
+        Raises:
+            ValueError: If this value contains more than one DSP word.
+        """
+        if len(self.words) != 1:
+            raise ValueError("A multi-word parameter has no scalar value.")
+        return self.words[0]
 
 
 class TiresiasClient(Protocol):
@@ -176,13 +137,13 @@ class TiresiasClient(Protocol):
         """Disconnect the active device, if any."""
 
     async def read_session(self) -> DeviceSession:
-        """Read and validate identity, protocol, status, and full catalog."""
+        """Read identity, protocol, and status for the fixed contract."""
 
     async def read_parameter(self, parameter_id: int) -> ParameterValue:
-        """Read one cataloged parameter by stable identifier."""
+        """Read every word of one parameter by stable identifier."""
 
     async def write_parameter(self, parameter_id: int, value: int) -> ParameterValue:
-        """Persist one cataloged parameter and return its committed revision."""
+        """Persist one writable scalar parameter and return its revision."""
 
 
 class ProtocolError(RuntimeError):

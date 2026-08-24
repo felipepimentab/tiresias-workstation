@@ -180,10 +180,10 @@ class BleController(QObject):
         return True
 
     def read_parameter(self, parameter_id: int) -> bool:
-        """Request the current persisted value of one catalog parameter.
+        """Request every current word of one fixed-contract parameter.
 
         Args:
-            parameter_id: Stable catalog identifier, never a DSP address.
+            parameter_id: Stable contract identifier, never a DSP address.
 
         Returns:
             ``True`` if scheduled, otherwise ``False``.
@@ -208,8 +208,8 @@ class BleController(QObject):
         """Request validation and persistent storage of one parameter value.
 
         Args:
-            parameter_id: Stable catalog identifier, never a DSP address.
-            value: Signed Q5.23 raw value validated against the catalog.
+            parameter_id: Stable contract identifier, never a DSP address.
+            value: Encoded scalar validated against the fixed contract.
 
         Returns:
             ``True`` if scheduled, otherwise ``False``.

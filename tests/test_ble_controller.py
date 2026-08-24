@@ -9,15 +9,17 @@ from PySide6.QtWidgets import QApplication
 
 from tiresias_workstation.application.ble_controller import BleController
 from tiresias_workstation.domain.devices import DiscoveredDevice
+from tiresias_workstation.domain.dsp_contract import (
+    DSP_PARAMETER_CONTRACT_CRC32,
+    DSP_PARAMETER_CONTRACT_ID,
+    DSP_PARAMETER_CONTRACT_VERSION,
+    DSP_PARAMETERS,
+)
 from tiresias_workstation.domain.tiresias import (
     DeviceInformation,
     DeviceSession,
     DeviceState,
     DeviceStatus,
-    ParameterAccess,
-    ParameterDefinition,
-    ParameterEncoding,
-    ParameterUnit,
     ParameterValue,
     ProtocolCapability,
     ProtocolInformation,
@@ -31,41 +33,28 @@ def device_session():
     return DeviceSession(
         DeviceInformation("Tiresias", "Tiresias DK", "1", "A", "0.1.0"),
         ProtocolInformation(
-            1,
+            2,
             0,
             ProtocolCapability(15),
             12,
             16,
-            32,
-            1,
-            1,
+            DSP_PARAMETER_CONTRACT_VERSION,
+            len(DSP_PARAMETERS),
+            DSP_PARAMETER_CONTRACT_ID,
+            DSP_PARAMETER_CONTRACT_CRC32,
             2,
             3,
-            4,
         ),
         DeviceStatus(
             DeviceState.READY,
             StatusFlag(7),
             RequestResult.OK,
-            4,
+            3,
+            0,
             0,
             0,
         ),
-        (
-            ParameterDefinition(
-                1,
-                ParameterAccess(7),
-                ParameterEncoding.Q5_23,
-                0x2000,
-                1,
-                ParameterUnit.LINEAR,
-                0,
-                0x02000000,
-                0x00800000,
-                0x00008000,
-                "PHASE1",
-            ),
-        ),
+        DSP_PARAMETERS,
     )
 
 
@@ -116,11 +105,11 @@ class FakeTransport:
 
     async def read_parameter(self, parameter_id):
         await asyncio.sleep(0)
-        return ParameterValue(parameter_id, 0x00800000, 4)
+        return ParameterValue(parameter_id, (0x00800000,), 4)
 
     async def write_parameter(self, parameter_id, value):
         await asyncio.sleep(0)
-        return ParameterValue(parameter_id, value, 5)
+        return ParameterValue(parameter_id, (value,), 5)
 
 
 class BleControllerTest(unittest.TestCase):
