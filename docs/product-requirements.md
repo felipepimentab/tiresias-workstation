@@ -19,7 +19,7 @@ The application shall:
 - Discover and connect to a Tiresias DK over BLE.
 - Expose the board's connection state and useful device information.
 - Validate the board's custom-service protocol, state, and fixed DSP contract.
-- Read fixed DSP parameters and persist supported scalars by stable ID.
+- Read fixed DSP parameters and persist supported opaque byte arrays by stable ID.
 - Report correlated operation progress, completion, and actionable errors.
 
 Future versions shall support:
