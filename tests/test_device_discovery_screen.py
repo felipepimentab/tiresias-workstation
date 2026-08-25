@@ -3,7 +3,7 @@
 import unittest
 
 from PySide6.QtCore import QObject, Signal
-from PySide6.QtWidgets import QApplication, QDoubleSpinBox, QPushButton, QTableWidget
+from PySide6.QtWidgets import QApplication, QLineEdit, QPushButton, QTableWidget
 
 from tiresias_workstation.domain.devices import DiscoveredDevice
 from tiresias_workstation.domain.dsp_contract import DSP_PARAMETERS_BY_ID
@@ -27,7 +27,7 @@ class FakeController(QObject):
     session_loaded = Signal(object)
     parameter_read_started = Signal(int)
     parameter_read = Signal(object)
-    parameter_write_started = Signal(int, int)
+    parameter_write_started = Signal(int, object)
     parameter_written = Signal(object)
     parameter_operation_failed = Signal(int, str)
 
@@ -69,17 +69,16 @@ class FakeController(QObject):
     def read_parameter(self, parameter_id):
         self.parameter_read_started.emit(parameter_id)
         definition = DSP_PARAMETERS_BY_ID[parameter_id]
-        if definition.integer:
-            words = (definition.default,)
-        else:
-            words = (0x00800000,) * definition.word_count
-        self.parameter_read.emit(ParameterValue(parameter_id, words, 4))
+        data = (b"\x00\x80\x00\x00" * ((definition.byte_count + 3) // 4))[
+            : definition.byte_count
+        ]
+        self.parameter_read.emit(ParameterValue(parameter_id, data, 4))
         return True
 
     def write_parameter(self, parameter_id, value):
         self.parameter_writes.append((parameter_id, value))
         self.parameter_write_started.emit(parameter_id, value)
-        self.parameter_written.emit(ParameterValue(parameter_id, (value,), 5))
+        self.parameter_written.emit(ParameterValue(parameter_id, value, 5))
         return True
 
 
@@ -122,7 +121,7 @@ class DeviceDiscoveryScreenTest(unittest.TestCase):
         self.controller.session_loaded.emit(self.controller.session)
         control = self.window.device_control_screen
         table = control.findChild(QTableWidget, "parameterTable")
-        value_input = control.findChild(QDoubleSpinBox, "parameterValueInput")
+        value_input = control.findChild(QLineEdit, "parameterValueInput")
         write_button = control.findChild(QPushButton, "writeParameterButton")
 
         self.window.show()
@@ -135,14 +134,14 @@ class DeviceDiscoveryScreenTest(unittest.TestCase):
         self.assertEqual(table.rowCount(), 15)
         self.assertEqual(table.item(10, 1).text(), "Phase Comp Gain 1")
         self.assertEqual(table.item(10, 2).text(), "Gain")
-        self.assertEqual(table.item(10, 5).text(), "1.000000")
-        self.assertTrue(table.item(2, 5).text().startswith("34 words ·"))
-        self.assertIn("[33]", table.item(2, 5).toolTip())
+        self.assertEqual(table.item(10, 5).text(), "00 80 00 00")
+        self.assertTrue(table.item(2, 5).text().startswith("136 bytes ·"))
+        self.assertTrue(table.item(2, 5).toolTip().startswith("00 80 00 00"))
         table.selectRow(10)
-        value_input.setValue(3.0)
+        value_input.setText("01 80 00 00")
         write_button.click()
 
-        self.assertEqual(self.controller.parameter_writes, [(11, 0x01800000)])
+        self.assertEqual(self.controller.parameter_writes, [(11, b"\x01\x80\x00\x00")])
         self.assertIn("Persisted", control._message.text())
 
     def test_closing_window_shuts_down_controller(self):

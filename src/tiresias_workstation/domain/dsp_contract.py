@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from enum import IntEnum, IntFlag
 
 
-DSP_PARAMETER_CONTRACT_CRC32 = 0xF62C1808
+DSP_PARAMETER_CONTRACT_CRC32 = 0x22045C5C
 
 
 class DspBlockId(IntEnum):
@@ -53,11 +53,10 @@ class DspParameterId(IntEnum):
 
 
 class DspParameterFlag(IntFlag):
-    """Opt-in properties for an otherwise read-only Q5.23 parameter."""
+    """Access properties for an opaque parameter byte array."""
 
     NONE = 0
     WRITABLE = 1 << 0
-    INTEGER = 1 << 1
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,41 +74,27 @@ class DspParameterDefinition:
     parameter_id: DspParameterId
     block_id: DspBlockId
     name: str
-    word_count: int
+    byte_count: int
     flags: DspParameterFlag = DspParameterFlag.NONE
-    minimum: int | None = None
-    maximum: int | None = None
-    default: int | None = None
-    step: int | None = None
 
     @property
     def writable(self) -> bool:
         """Return whether the fixed contract permits writes."""
         return bool(self.flags & DspParameterFlag.WRITABLE)
 
-    @property
-    def integer(self) -> bool:
-        """Return whether words use signed integer rather than Q5.23 encoding."""
-        return bool(self.flags & DspParameterFlag.INTEGER)
-
-    def accepts(self, value: int) -> bool:
-        """Return whether a scalar value satisfies the fixed write contract.
+    def accepts(self, data: bytes) -> bool:
+        """Return whether opaque bytes satisfy the fixed write contract.
 
         Args:
-            value: Encoded signed 32-bit parameter value.
+            data: Complete uninterpreted parameter contents.
 
         Returns:
             ``True`` when the value may be written to the parameter.
         """
         return bool(
             self.writable
-            and self.word_count == 1
-            and self.minimum is not None
-            and self.maximum is not None
-            and self.step is not None
-            and self.minimum <= value <= self.maximum
-            and self.step > 0
-            and (value - self.minimum) % self.step == 0
+            and isinstance(data, bytes)
+            and len(data) == self.byte_count
         )
 
 
@@ -136,121 +121,97 @@ DSP_PARAMETERS = (
         DspParameterId.ADC_SELECT,
         DspBlockId.ADC_SELECT,
         "Selection",
-        1,
-        DspParameterFlag.WRITABLE | DspParameterFlag.INTEGER,
-        0,
-        3,
-        0,
-        1,
+        4,
+        DspParameterFlag.WRITABLE,
     ),
     DspParameterDefinition(
         DspParameterId.SOURCE_SELECT,
         DspBlockId.SOURCE_SELECT,
         "Selection",
-        1,
-        DspParameterFlag.WRITABLE | DspParameterFlag.INTEGER,
-        0,
-        1,
-        1,
-        1,
+        4,
+        DspParameterFlag.WRITABLE,
     ),
     DspParameterDefinition(
         DspParameterId.BAND_1_COMPRESSOR_LUT,
         DspBlockId.BAND_1_COMPRESSOR,
         "LUT",
-        34,
+        136,
     ),
     DspParameterDefinition(
         DspParameterId.BAND_2_COMPRESSOR_LUT,
         DspBlockId.BAND_2_COMPRESSOR,
         "LUT",
-        34,
+        136,
     ),
     DspParameterDefinition(
         DspParameterId.BAND_3_COMPRESSOR_LUT,
         DspBlockId.BAND_3_COMPRESSOR,
         "LUT",
-        34,
+        136,
     ),
     DspParameterDefinition(
         DspParameterId.BAND_4_COMPRESSOR_LUT,
         DspBlockId.BAND_4_COMPRESSOR,
         "LUT",
-        34,
+        136,
     ),
     DspParameterDefinition(
         DspParameterId.BAND_5_COMPRESSOR_LUT,
         DspBlockId.BAND_5_COMPRESSOR,
         "LUT",
-        34,
+        136,
     ),
     DspParameterDefinition(
         DspParameterId.BAND_6_COMPRESSOR_LUT,
         DspBlockId.BAND_6_COMPRESSOR,
         "LUT",
-        34,
+        136,
     ),
     DspParameterDefinition(
         DspParameterId.BAND_7_COMPRESSOR_LUT,
         DspBlockId.BAND_7_COMPRESSOR,
         "LUT",
-        34,
+        136,
     ),
     DspParameterDefinition(
         DspParameterId.BAND_8_COMPRESSOR_LUT,
         DspBlockId.BAND_8_COMPRESSOR,
         "LUT",
-        34,
+        136,
     ),
     DspParameterDefinition(
         DspParameterId.PHASE_COMP_GAIN_1,
         DspBlockId.PHASE_COMP_GAIN_1,
         "Gain",
-        1,
+        4,
         DspParameterFlag.WRITABLE,
-        0,
-        0x02000000,
-        0x00800000,
-        0x00008000,
     ),
     DspParameterDefinition(
         DspParameterId.PHASE_COMP_GAIN_2,
         DspBlockId.PHASE_COMP_GAIN_2,
         "Gain",
-        1,
+        4,
         DspParameterFlag.WRITABLE,
-        0,
-        0x02000000,
-        0x00800000,
-        0x00008000,
     ),
     DspParameterDefinition(
         DspParameterId.PHASE_COMP_GAIN_3,
         DspBlockId.PHASE_COMP_GAIN_3,
         "Gain",
-        1,
+        4,
         DspParameterFlag.WRITABLE,
-        0,
-        0x02000000,
-        0x00800000,
-        0x00008000,
     ),
     DspParameterDefinition(
         DspParameterId.OUTPUT_HEADROOM_GAIN,
         DspBlockId.OUTPUT_HEADROOM,
         "Gain",
-        1,
+        4,
         DspParameterFlag.WRITABLE,
-        0,
-        0x02000000,
-        0x00800000,
-        0x00008000,
     ),
     DspParameterDefinition(
         DspParameterId.SOFT_CLIP_LUT,
         DspBlockId.SOFT_CLIP,
         "LUT",
-        45,
+        180,
     ),
 )
 

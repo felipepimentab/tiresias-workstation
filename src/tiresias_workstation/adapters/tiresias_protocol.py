@@ -45,10 +45,11 @@ FIRMWARE_REVISION_UUID = "00002a26-0000-1000-8000-00805f9b34fb"
 
 _PROTOCOL_INFO = struct.Struct("<BBHIHHIII")
 _STATUS = struct.Struct("<BBBBIIBBH")
-_REQUEST = struct.Struct("<BBIBBi")
-_RESPONSE = struct.Struct("<BBIBBiI")
+_REQUEST = struct.Struct("<BBIBB4s")
+_RESPONSE = struct.Struct("<BBIBB4sI")
 
-_PROTOCOL_MAJOR = 3
+_PROTOCOL_MAJOR = 4
+_PARAMETER_CHUNK_SIZE = 4
 _GET_PARAMETER = 1
 _SET_PARAMETER = 2
 
@@ -59,7 +60,7 @@ class TiresiasProtocolClient:
     Args:
         transport: Connected-device transport responsible only for BLE and
             generic GATT mechanics.
-        response_timeout: Maximum wait for each correlated word response, in
+        response_timeout: Maximum wait for each correlated byte-chunk response, in
             seconds.
     """
 
@@ -158,31 +159,28 @@ class TiresiasProtocolClient:
         return DeviceSession(information, protocol, status, DSP_PARAMETERS)
 
     async def read_parameter(self, parameter_id: int) -> ParameterValue:
-        """Read all words of one fixed-contract parameter."""
+        """Read all opaque bytes of one fixed-contract parameter."""
         definition = self._definition(parameter_id)
-        words, revision = await self._exchange_words(
+        data, revision = await self._exchange_bytes(
             _GET_PARAMETER,
             parameter_id,
-            (0,) * definition.word_count,
+            bytes(definition.byte_count),
         )
-        return ParameterValue(parameter_id, words, revision)
+        return ParameterValue(parameter_id, data, revision)
 
-    async def write_parameter(self, parameter_id: int, value: int) -> ParameterValue:
-        """Persist one validated scalar and return its committed revision."""
+    async def write_parameter(self, parameter_id: int, data: bytes) -> ParameterValue:
+        """Persist one validated opaque byte array and return its revision."""
         definition = self._definition(parameter_id)
         if not definition.writable:
             raise ValueError(f"Parameter {parameter_id} is read-only.")
-        if not definition.accepts(value):
-            raise ValueError(
-                f"Value must be {definition.minimum}..{definition.maximum} "
-                f"in steps of {definition.step}."
-            )
-        words, revision = await self._exchange_words(
+        if not definition.accepts(data):
+            raise ValueError(f"Parameter {parameter_id} requires {definition.byte_count} bytes.")
+        response_data, revision = await self._exchange_bytes(
             _SET_PARAMETER,
             parameter_id,
-            (value,),
+            data,
         )
-        return ParameterValue(parameter_id, words, revision)
+        return ParameterValue(parameter_id, response_data, revision)
 
     async def _read_device_information(self) -> DeviceInformation:
         """Read optional standard DIS text fields independently."""
@@ -211,35 +209,35 @@ class TiresiasProtocolClient:
             raise ValueError(f"Parameter {parameter_id} is not in the fixed contract.")
         return definition
 
-    async def _exchange_words(
+    async def _exchange_bytes(
         self,
         opcode: int,
         parameter_id: int,
-        request_values: tuple[int, ...],
-    ) -> tuple[tuple[int, ...], int]:
-        """Serialize one or more indexed word requests under one subscription."""
+        request_data: bytes,
+    ) -> tuple[bytes, int]:
+        """Serialize opaque byte chunks under one response subscription."""
         async with self._request_lock:
-            return await self._exchange_words_serialized(
+            return await self._exchange_bytes_serialized(
                 opcode,
                 parameter_id,
-                request_values,
+                request_data,
             )
 
-    async def _exchange_words_serialized(
+    async def _exchange_bytes_serialized(
         self,
         opcode: int,
         parameter_id: int,
-        request_values: tuple[int, ...],
-    ) -> tuple[tuple[int, ...], int]:
-        """Exchange indexed words while owning the protocol operation slot."""
+        request_data: bytes,
+    ) -> tuple[bytes, int]:
+        """Exchange indexed byte chunks while owning the operation slot."""
         loop = asyncio.get_running_loop()
         response_future: asyncio.Future[
-            tuple[int, RequestResult, int, int, int, int, int]
+            tuple[int, RequestResult, int, int, int, bytes, int]
         ] | None = None
         expected_transaction_id = 0
 
         def response_received(payload: bytes) -> None:
-            """Accept only the indication correlated to the active word."""
+            """Accept only the indication correlated to the active byte chunk."""
             nonlocal response_future
             try:
                 response = decode_response(payload)
@@ -254,20 +252,23 @@ class TiresiasProtocolClient:
             ):
                 response_future.set_result(response)
 
-        words: list[int] = []
+        received_data = bytearray()
         revisions: set[int] = set()
         await self._transport.start_notifications(RESPONSE_UUID, response_received)
         try:
-            for word_index, request_value in enumerate(request_values):
+            for byte_offset in range(0, len(request_data), _PARAMETER_CHUNK_SIZE):
                 expected_transaction_id = self._allocate_transaction_id()
                 response_future = loop.create_future()
+                request_chunk = request_data[
+                    byte_offset : byte_offset + _PARAMETER_CHUNK_SIZE
+                ].ljust(_PARAMETER_CHUNK_SIZE, b"\x00")
                 payload = _REQUEST.pack(
                     opcode,
                     0,
                     expected_transaction_id,
                     parameter_id,
-                    word_index,
-                    request_value,
+                    byte_offset,
+                    request_chunk,
                 )
                 await self._transport.write_characteristic(
                     REQUEST_UUID,
@@ -289,28 +290,29 @@ class TiresiasProtocolClient:
                     result,
                     _,
                     response_id,
-                    response_word_index,
-                    response_value,
+                    response_byte_offset,
+                    response_data,
                     revision,
                 ) = response
                 if (
                     response_opcode != opcode
                     or response_id != parameter_id
-                    or response_word_index != word_index
+                    or response_byte_offset != byte_offset
                 ):
                     raise ProtocolError(
                         "The correlated response does not match the request."
                     )
                 if result is not RequestResult.OK:
                     raise RequestError(result, parameter_id)
-                words.append(response_value)
+                remaining = len(request_data) - byte_offset
+                received_data.extend(response_data[:remaining])
                 revisions.add(revision)
         finally:
             await self._transport.stop_notifications(RESPONSE_UUID)
 
         if len(revisions) != 1:
-            raise ProtocolError("Parameter revision changed during a multi-word read.")
-        return tuple(words), revisions.pop()
+            raise ProtocolError("Parameter revision changed during a multi-chunk operation.")
+        return bytes(received_data), revisions.pop()
 
     def _allocate_transaction_id(self) -> int:
         """Return a nonzero 32-bit transaction identifier for this process."""
@@ -378,7 +380,7 @@ def decode_status(payload: bytes) -> DeviceStatus:
         revision,
         transaction_id,
         parameter_id,
-        word_index,
+        byte_offset,
         tail,
     ) = _STATUS.unpack(payload)
     if reserved != 0 or tail != 0 or flags & ~0x07:
@@ -391,7 +393,7 @@ def decode_status(payload: bytes) -> DeviceStatus:
             revision,
             transaction_id,
             parameter_id,
-            word_index,
+            byte_offset,
         )
     except ValueError as error:
         raise ProtocolError("Status contains an unsupported enum value.") from error
@@ -399,8 +401,8 @@ def decode_status(payload: bytes) -> DeviceStatus:
 
 def decode_response(
     payload: bytes,
-) -> tuple[int, RequestResult, int, int, int, int, int]:
-    """Decode one fixed 16-byte correlated word response."""
+) -> tuple[int, RequestResult, int, int, int, bytes, int]:
+    """Decode one fixed 16-byte correlated opaque-byte response."""
     if len(payload) != _RESPONSE.size:
         raise ProtocolError("Parameter response must be 16 bytes.")
     (
@@ -408,8 +410,8 @@ def decode_response(
         raw_result,
         transaction_id,
         parameter_id,
-        word_index,
-        value,
+        byte_offset,
+        data,
         revision,
     ) = _RESPONSE.unpack(payload)
     if opcode not in (_GET_PARAMETER, _SET_PARAMETER):
@@ -423,7 +425,7 @@ def decode_response(
         result,
         transaction_id,
         parameter_id,
-        word_index,
-        value,
+        byte_offset,
+        data,
         revision,
     )

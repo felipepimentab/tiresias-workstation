@@ -33,7 +33,7 @@ class FakeGattTransport:
             FIRMWARE_REVISION_UUID: b"0.1.0",
             PROTOCOL_INFO_UUID: struct.pack(
                 "<BBHIHHIII",
-                3,
+                4,
                 0,
                 24,
                 15,
@@ -79,18 +79,22 @@ class FakeGattTransport:
             _flags,
             transaction_id,
             parameter_id,
-            word_index,
-            request_value,
-        ) = struct.unpack("<BBIBBi", value)
-        response_value = 0x00800000 + word_index if opcode == 1 else request_value
+            byte_offset,
+            request_data,
+        ) = struct.unpack("<BBIBB4s", value)
+        response_data = (
+            bytes((byte_offset + index) & 0xFF for index in range(4))
+            if opcode == 1
+            else request_data
+        )
         payload = struct.pack(
-            "<BBIBBiI",
+            "<BBIBB4sI",
             opcode,
             self.result,
             transaction_id,
             parameter_id,
-            word_index,
-            response_value,
+            byte_offset,
+            response_data,
             4,
         )
         if self.emit_response:
@@ -123,7 +127,7 @@ class TiresiasProtocolClientTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(session.status.parameter_revision, 3)
         self.assertEqual(len(session.parameters), 15)
         self.assertEqual(session.parameters[2].name, "LUT")
-        self.assertEqual(session.parameters[2].word_count, 34)
+        self.assertEqual(session.parameters[2].byte_count, 136)
         self.assertEqual(len(self.transport.reads), 7)
         self.assertIn(PROTOCOL_INFO_UUID, self.transport.reads)
         self.assertIn(STATUS_UUID, self.transport.reads)
@@ -145,32 +149,32 @@ class TiresiasProtocolClientTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(devices[0].is_tiresias)
         self.assertTrue(updates[0].is_tiresias)
 
-    async def test_reads_every_word_of_a_lut_by_index(self):
-        """Assemble one multi-word value from correlated word responses."""
+    async def test_reads_every_byte_chunk_of_a_lut_by_offset(self):
+        """Assemble one opaque byte array from correlated chunk responses."""
         reading = await self.client.read_parameter(3)
 
-        requests = [struct.unpack("<BBIBBi", payload) for payload in self.transport.writes]
-        self.assertEqual(len(reading.words), 34)
-        self.assertEqual(reading.words[0], 0x00800000)
-        self.assertEqual(reading.words[-1], 0x00800000 + 33)
-        self.assertEqual([request[4] for request in requests], list(range(34)))
+        requests = [struct.unpack("<BBIBB4s", payload) for payload in self.transport.writes]
+        self.assertEqual(len(reading.data), 136)
+        self.assertEqual(reading.data[:4], b"\x00\x01\x02\x03")
+        self.assertEqual(reading.data[-4:], b"\x84\x85\x86\x87")
+        self.assertEqual([request[4] for request in requests], list(range(0, 136, 4)))
         self.assertTrue(all(request[3] == 3 for request in requests))
         self.assertIsNone(self.transport.callback)
 
-    async def test_correlates_scalar_get_and_persistent_set(self):
+    async def test_correlates_byte_array_get_and_persistent_set(self):
         """Use stable byte IDs and report firmware-confirmed revisions."""
         reading = await self.client.read_parameter(11)
-        written = await self.client.write_parameter(11, 0x01000000)
+        written = await self.client.write_parameter(11, b"\x01\x00\x00\x00")
 
-        self.assertEqual(reading.value, 0x00800000)
-        self.assertEqual(written.value, 0x01000000)
+        self.assertEqual(reading.data, b"\x00\x01\x02\x03")
+        self.assertEqual(written.data, b"\x01\x00\x00\x00")
         self.assertEqual(written.parameter_revision, 4)
         uuid, payload, with_response = self.transport.last_write
         self.assertEqual(uuid, REQUEST_UUID)
         self.assertTrue(with_response)
         self.assertEqual(
-            struct.unpack("<BBIBBi", payload)[3:],
-            (11, 0, 0x01000000),
+            struct.unpack("<BBIBB4s", payload)[3:],
+            (11, 0, b"\x01\x00\x00\x00"),
         )
 
     async def test_surfaces_device_rejection(self):
@@ -178,14 +182,14 @@ class TiresiasProtocolClientTest(unittest.IsolatedAsyncioTestCase):
         self.transport.result = 6
 
         with self.assertRaisesRegex(RequestError, "persist failed"):
-            await self.client.write_parameter(11, 0x01000000)
+            await self.client.write_parameter(11, b"\x01\x00\x00\x00")
 
     async def test_att_write_response_is_not_operation_completion(self):
         """Require the correlated terminal indication after an ATT write."""
         self.transport.emit_response = False
 
         with self.assertRaisesRegex(TimeoutError, "parameter result"):
-            await self.client.write_parameter(11, 0x01000000)
+            await self.client.write_parameter(11, b"\x01\x00\x00\x00")
 
     def test_rejects_contract_mismatch(self):
         """Fail the handshake when the catalog fingerprint differs."""

@@ -7,12 +7,12 @@ never handles characteristic UUIDs, packets, or raw DSP addresses.
 from PySide6.QtCore import Qt, Slot
 from PySide6.QtWidgets import (
     QAbstractItemView,
-    QDoubleSpinBox,
     QFormLayout,
     QFrame,
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QLineEdit,
     QProgressBar,
     QPushButton,
     QTableWidget,
@@ -32,9 +32,6 @@ from tiresias_workstation.domain.tiresias import (
     ParameterValue,
     ProtocolCapability,
 )
-
-_Q5_23_SCALE = 1 << 23
-
 
 class DeviceControlScreen(QWidget):
     """Render device metadata and persistent parameter controls.
@@ -135,7 +132,7 @@ class DeviceControlScreen(QWidget):
         self._parameter_table = QTableWidget(0, 6)
         self._parameter_table.setObjectName("parameterTable")
         self._parameter_table.setHorizontalHeaderLabels(
-            ["ID", "Block", "Parameter", "Access", "Words", "Current value"]
+            ["ID", "Block", "Parameter", "Access", "Bytes", "Current bytes"]
         )
         self._parameter_table.setSelectionBehavior(
             QAbstractItemView.SelectionBehavior.SelectRows
@@ -162,9 +159,9 @@ class DeviceControlScreen(QWidget):
         self._selected_parameter.setObjectName("selectedParameter")
         editor_layout.addWidget(self._selected_parameter, 1)
 
-        self._value_input = QDoubleSpinBox()
+        self._value_input = QLineEdit()
         self._value_input.setObjectName("parameterValueInput")
-        self._value_input.setDecimals(8)
+        self._value_input.setPlaceholderText("Hex bytes, for example: 00 00 00 01")
         self._value_input.setMinimumWidth(150)
         editor_layout.addWidget(self._value_input)
 
@@ -233,9 +230,9 @@ class DeviceControlScreen(QWidget):
             protocol.capabilities & ProtocolCapability.DSP_APPLY_DEFERRED
         )
         self._board_values["behavior"].setText(
-            "Scalar persistence enabled; DSP access deferred"
+            "Opaque-byte persistence enabled; DSP access deferred"
             if deferred
-            else "Live DSP reads and persistent scalar writes"
+            else "Live DSP reads and persistent opaque-byte writes"
         )
         self._summary.setText(
             f"{info.model_number or 'Tiresias device'} · {len(payload.parameters)} "
@@ -272,26 +269,9 @@ class DeviceControlScreen(QWidget):
                 f"#{definition.parameter_id} · {block.name} · {definition.name}"
             )
             if definition.writable:
-                minimum = definition.minimum
-                maximum = definition.maximum
-                step = definition.step
-                default = definition.default
-                assert minimum is not None
-                assert maximum is not None
-                assert step is not None
-                assert default is not None
-                self._value_input.setDecimals(0 if definition.integer else 8)
-                self._value_input.setRange(
-                    _raw_to_display(definition, minimum),
-                    _raw_to_display(definition, maximum),
-                )
-                self._value_input.setSingleStep(
-                    _raw_to_display(definition, step)
-                )
                 current = self._stored_values.get(definition.parameter_id)
-                raw_value = current.value if current is not None else default
-                self._value_input.setValue(
-                    _raw_to_display(definition, raw_value)
+                self._value_input.setText(
+                    current.data.hex(" ").upper() if current is not None else ""
                 )
         self._update_actions()
 
@@ -306,19 +286,23 @@ class DeviceControlScreen(QWidget):
 
     @Slot()
     def _write_selected(self) -> None:
-        """Persist the selected scalar after fixed-contract validation."""
+        """Persist selected opaque bytes after fixed-contract validation."""
         definition = self._selected_definition()
         if definition is None:
             return
-        raw_value = (
-            round(self._value_input.value())
-            if definition.integer
-            else round(self._value_input.value() * _Q5_23_SCALE)
-        )
-        if not definition.accepts(raw_value):
-            self._show_message("Value does not align with the contract step.", True)
+        try:
+            data = bytes.fromhex(self._value_input.text())
+        except ValueError:
+            self._show_message("Enter parameter bytes as hexadecimal pairs.", True)
             return
-        if not self._controller.write_parameter(definition.parameter_id, raw_value):
+        if not definition.accepts(data):
+            self._show_message(
+                f"Parameter {definition.parameter_id} requires "
+                f"exactly {definition.byte_count} bytes.",
+                True,
+            )
+            return
+        if not self._controller.write_parameter(definition.parameter_id, data):
             self._show_message("Another operation is still in progress.", True)
 
     @Slot()
@@ -336,9 +320,9 @@ class DeviceControlScreen(QWidget):
         self._progress.show()
         self._update_actions()
 
-    @Slot(int, int)
-    def _write_started(self, parameter_id: int, _value: int) -> None:
-        """Render a scalar write without claiming completion."""
+    @Slot(int, object)
+    def _write_started(self, parameter_id: int, _data: object) -> None:
+        """Render an opaque-byte write without claiming completion."""
         self._operation_started(parameter_id)
         self._show_message(f"Writing parameter {parameter_id}…")
 
@@ -413,7 +397,7 @@ class DeviceControlScreen(QWidget):
                 QTableWidgetItem(block.name),
                 QTableWidgetItem(definition.name),
                 QTableWidgetItem(access),
-                QTableWidgetItem(str(definition.word_count)),
+                QTableWidgetItem(str(definition.byte_count)),
                 QTableWidgetItem("Reading…"),
             )
             for column, item in enumerate(values):
@@ -422,7 +406,7 @@ class DeviceControlScreen(QWidget):
             self._parameter_table.selectRow(0)
 
     def _set_parameter_value(self, value: ParameterValue) -> None:
-        """Update the current-value cell and selected scalar editor."""
+        """Update the current-byte cell and selected opaque-byte editor."""
         self._stored_values[value.parameter_id] = value
         definition = self._definitions.get(value.parameter_id)
         if definition is None:
@@ -430,27 +414,16 @@ class DeviceControlScreen(QWidget):
         for row in range(self._parameter_table.rowCount()):
             item = self._parameter_table.item(row, 0)
             if item is not None and item.data(Qt.ItemDataRole.UserRole) == value.parameter_id:
-                if len(value.words) == 1:
-                    displayed = _format_word(definition, value.value)
-                    tooltip = f"Raw: 0x{value.value & 0xFFFFFFFF:08X}"
+                encoded = value.data.hex(" ").upper()
+                if len(value.data) <= 8:
+                    displayed = encoded
                 else:
-                    displayed = (
-                        f"{len(value.words)} words · "
-                        f"{_format_word(definition, value.words[0])} … "
-                        f"{_format_word(definition, value.words[-1])}"
-                    )
-                    tooltip = "\n".join(
-                        f"[{index}] {_format_word(definition, word)} "
-                        f"(0x{word & 0xFFFFFFFF:08X})"
-                        for index, word in enumerate(value.words)
-                    )
+                    displayed = f"{len(value.data)} bytes · {encoded[:23]} … {encoded[-23:]}"
                 value_item = self._parameter_table.item(row, 5)
                 value_item.setText(displayed)
-                value_item.setToolTip(tooltip)
-                if self._parameter_table.currentRow() == row and len(value.words) == 1:
-                    self._value_input.setValue(
-                        _raw_to_display(definition, value.value)
-                    )
+                value_item.setToolTip(encoded)
+                if self._parameter_table.currentRow() == row and definition.writable:
+                    self._value_input.setText(encoded)
                 break
 
     def _selected_definition(self) -> DspParameterDefinition | None:
@@ -488,19 +461,6 @@ class DeviceControlScreen(QWidget):
         self._message.setProperty("error", error)
         self._message.style().unpolish(self._message)
         self._message.style().polish(self._message)
-
-
-def _raw_to_display(definition: DspParameterDefinition, value: int) -> float:
-    """Convert an encoded word to the unit displayed by the editor."""
-    return float(value) if definition.integer else value / _Q5_23_SCALE
-
-
-def _format_word(definition: DspParameterDefinition, value: int) -> str:
-    """Format one encoded word according to the fixed type flag."""
-    if definition.integer:
-        return str(value)
-    return f"{_raw_to_display(definition, value):.6f}"
-
 
 _STYLE_SHEET = """
 #deviceControlScreen, #boardInformationPage, #parameterPage {

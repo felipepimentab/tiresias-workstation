@@ -74,7 +74,7 @@ class BleController(QObject):
     session_loaded = Signal(object)
     parameter_read_started = Signal(int)
     parameter_read = Signal(object)
-    parameter_write_started = Signal(int, int)
+    parameter_write_started = Signal(int, object)
     parameter_written = Signal(object)
     parameter_operation_failed = Signal(int, str)
 
@@ -180,7 +180,7 @@ class BleController(QObject):
         return True
 
     def read_parameter(self, parameter_id: int) -> bool:
-        """Request every current word of one fixed-contract parameter.
+        """Request every opaque byte of one fixed-contract parameter.
 
         Args:
             parameter_id: Stable contract identifier, never a DSP address.
@@ -204,12 +204,12 @@ class BleController(QObject):
         )
         return True
 
-    def write_parameter(self, parameter_id: int, value: int) -> bool:
-        """Request validation and persistent storage of one parameter value.
+    def write_parameter(self, parameter_id: int, data: bytes) -> bool:
+        """Request persistent storage of one opaque parameter byte array.
 
         Args:
             parameter_id: Stable contract identifier, never a DSP address.
-            value: Encoded scalar validated against the fixed contract.
+            data: Complete uninterpreted parameter contents.
 
         Returns:
             ``True`` if scheduled, otherwise ``False``.
@@ -218,11 +218,11 @@ class BleController(QObject):
             if self._connected_address is None:
                 return False
         future = self._schedule(
-            lambda transport: transport.write_parameter(parameter_id, value)
+            lambda transport: transport.write_parameter(parameter_id, data)
         )
         if future is None:
             return False
-        self.parameter_write_started.emit(parameter_id, value)
+        self.parameter_write_started.emit(parameter_id, data)
         future.add_done_callback(
             lambda completed: self._parameter_completed(
                 parameter_id, completed, is_write=True

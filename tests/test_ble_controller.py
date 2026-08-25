@@ -31,7 +31,7 @@ def device_session():
     return DeviceSession(
         DeviceInformation("Tiresias", "Tiresias DK", "1", "A", "0.1.0"),
         ProtocolInformation(
-            3,
+            4,
             0,
             ProtocolCapability(15),
             12,
@@ -100,11 +100,11 @@ class FakeTransport:
 
     async def read_parameter(self, parameter_id):
         await asyncio.sleep(0)
-        return ParameterValue(parameter_id, (0x00800000,), 4)
+        return ParameterValue(parameter_id, b"\x00\x80\x00\x00", 4)
 
     async def write_parameter(self, parameter_id, value):
         await asyncio.sleep(0)
-        return ParameterValue(parameter_id, (value,), 5)
+        return ParameterValue(parameter_id, value, 5)
 
 
 class BleControllerTest(unittest.TestCase):
@@ -152,7 +152,7 @@ class BleControllerTest(unittest.TestCase):
         self.assertEqual(session_spy.count(), 1)
 
         written_spy = QSignalSpy(self.controller.parameter_written)
-        self.assertTrue(self.controller.write_parameter(1, 0x01000000))
+        self.assertTrue(self.controller.write_parameter(1, b"\x01\x00\x00\x00"))
         self.wait_for_signal(written_spy)
         self.assertEqual(written_spy.at(0)[0].parameter_revision, 5)
 

@@ -88,7 +88,7 @@ class DeviceStatus:
     parameter_revision: int
     last_transaction_id: int
     last_parameter_id: int
-    last_word_index: int
+    last_byte_offset: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,22 +103,11 @@ class DeviceSession:
 
 @dataclass(frozen=True, slots=True)
 class ParameterValue:
-    """A correlated complete parameter read or scalar write result."""
+    """A correlated complete opaque parameter read or write result."""
 
     parameter_id: int
-    words: tuple[int, ...]
+    data: bytes
     parameter_revision: int
-
-    @property
-    def value(self) -> int:
-        """Return the only word of a scalar parameter.
-
-        Raises:
-            ValueError: If this value contains more than one DSP word.
-        """
-        if len(self.words) != 1:
-            raise ValueError("A multi-word parameter has no scalar value.")
-        return self.words[0]
 
 
 class TiresiasClient(Protocol):
@@ -137,10 +126,10 @@ class TiresiasClient(Protocol):
         """Read identity, protocol, and status for the fixed contract."""
 
     async def read_parameter(self, parameter_id: int) -> ParameterValue:
-        """Read every word of one parameter by stable identifier."""
+        """Read every opaque byte of one parameter by stable identifier."""
 
-    async def write_parameter(self, parameter_id: int, value: int) -> ParameterValue:
-        """Persist one writable scalar parameter and return its revision."""
+    async def write_parameter(self, parameter_id: int, data: bytes) -> ParameterValue:
+        """Persist one writable byte array and return its revision."""
 
 
 class ProtocolError(RuntimeError):
