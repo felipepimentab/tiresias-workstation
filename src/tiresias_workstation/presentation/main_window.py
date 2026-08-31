@@ -14,25 +14,39 @@ from PySide6.QtWidgets import (
 )
 
 from tiresias_workstation.application.ble_controller import BleController
+from tiresias_workstation.adapters.bundled_prescriptions import (
+    BUNDLED_PRESCRIPTION_CATALOG,
+)
+from tiresias_workstation.domain.prescriptions import PrescriptionCatalog
 from tiresias_workstation.presentation.device_discovery_screen import (
     DeviceDiscoveryScreen,
 )
 from tiresias_workstation.presentation.device_control_screen import DeviceControlScreen
+from tiresias_workstation.presentation.prescription_screen import PrescriptionScreen
 
 
 class MainWindow(QMainWindow):
     """Own application-level services and the active workstation screen."""
 
-    def __init__(self, controller: BleController | None = None) -> None:
+    def __init__(
+        self,
+        controller: BleController | None = None,
+        prescription_catalog: PrescriptionCatalog | None = None,
+    ) -> None:
         """Initialize the workstation window.
 
         Args:
             controller: Optional controller for dependency injection. A real
                 :class:`BleController` is created when omitted.
+            prescription_catalog: Optional catalog for alternate or custom
+                prescription sources.
         """
         super().__init__()
 
         self._controller = controller or BleController()
+        self._prescription_catalog = (
+            prescription_catalog or BUNDLED_PRESCRIPTION_CATALOG
+        )
 
         self.setWindowTitle("Tiresias Workstation")
         self.resize(1080, 720)
@@ -42,6 +56,9 @@ class MainWindow(QMainWindow):
 
         self.device_discovery_screen = DeviceDiscoveryScreen(self._controller)
         self.device_control_screen = DeviceControlScreen(self._controller)
+        self.prescription_screen = PrescriptionScreen(
+            self._controller, self._prescription_catalog
+        )
         self.setCentralWidget(self._build_application_shell())
         self.setStyleSheet(_WINDOW_STYLE_SHEET)
         self._controller.session_loaded.connect(self._session_available)
@@ -80,9 +97,14 @@ class MainWindow(QMainWindow):
         self._board_button.setObjectName("boardNavigationButton")
         self._parameters_button = self._navigation_row("DSP parameters", enabled=False)
         self._parameters_button.setObjectName("parametersNavigationButton")
+        self._prescriptions_button = self._navigation_row(
+            "Prescriptions", enabled=False
+        )
+        self._prescriptions_button.setObjectName("prescriptionsNavigationButton")
         sidebar_layout.addWidget(self._devices_button)
         sidebar_layout.addWidget(self._board_button)
         sidebar_layout.addWidget(self._parameters_button)
+        sidebar_layout.addWidget(self._prescriptions_button)
         sidebar_layout.addWidget(self._navigation_row("Diagnostics", enabled=False))
 
         future_label = QLabel("LATER RELEASES")
@@ -100,11 +122,13 @@ class MainWindow(QMainWindow):
         self._content_stack = QStackedWidget()
         self._content_stack.addWidget(self.device_discovery_screen)
         self._content_stack.addWidget(self.device_control_screen)
+        self._content_stack.addWidget(self.prescription_screen)
         shell_layout.addWidget(self._content_stack, 1)
 
         self._devices_button.clicked.connect(self._show_devices)
         self._board_button.clicked.connect(self._show_board)
         self._parameters_button.clicked.connect(self._show_parameters)
+        self._prescriptions_button.clicked.connect(self._show_prescriptions)
         return shell
 
     @staticmethod
@@ -151,11 +175,18 @@ class MainWindow(QMainWindow):
         self.device_control_screen.show_parameters()
         self._select_navigation(self._parameters_button)
 
+    @Slot()
+    def _show_prescriptions(self) -> None:
+        """Navigate to catalog-based prescription loading."""
+        self._content_stack.setCurrentWidget(self.prescription_screen)
+        self._select_navigation(self._prescriptions_button)
+
     @Slot(object)
     def _session_available(self, _session: object) -> None:
         """Enable connected-device pages after protocol validation."""
         self._board_button.setEnabled(True)
         self._parameters_button.setEnabled(True)
+        self._prescriptions_button.setEnabled(True)
         self._show_board()
 
     @Slot(str)
@@ -163,6 +194,7 @@ class MainWindow(QMainWindow):
         """Return to Devices and disable session-scoped navigation."""
         self._board_button.setEnabled(False)
         self._parameters_button.setEnabled(False)
+        self._prescriptions_button.setEnabled(False)
         self._show_devices()
 
     def _select_navigation(self, selected: QPushButton) -> None:
@@ -171,6 +203,7 @@ class MainWindow(QMainWindow):
             self._devices_button,
             self._board_button,
             self._parameters_button,
+            self._prescriptions_button,
         ):
             button.setProperty("selected", button is selected)
             button.style().unpolish(button)
@@ -210,7 +243,8 @@ _WINDOW_STYLE_SHEET = """
     padding: 18px 9px 6px 9px;
 }
 #sidebar QPushButton#navigationButton, #devicesNavigationButton,
-#boardNavigationButton, #parametersNavigationButton {
+#boardNavigationButton, #parametersNavigationButton,
+#prescriptionsNavigationButton {
     background: transparent;
     border: none;
     border-radius: 7px;
