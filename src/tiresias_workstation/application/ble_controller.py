@@ -15,10 +15,12 @@ from typing import Any
 
 from PySide6.QtCore import QObject, Signal
 
+from tiresias_workstation.application.prescription_loader import PrescriptionLoader
 from tiresias_workstation.adapters.bleak_adapter import BleakDeviceTransport
 from tiresias_workstation.adapters.tiresias_protocol import TiresiasProtocolClient
 from tiresias_workstation.domain.devices import DeviceTransport, DiscoveredDevice
-from tiresias_workstation.domain.tiresias import TiresiasClient
+from tiresias_workstation.domain.prescriptions import Prescription
+from tiresias_workstation.domain.tiresias import DeviceSession, TiresiasClient
 
 # Factories make the controller independently testable with an in-memory
 # transport while ensuring the real Bleak transport is created on its own loop.
@@ -52,6 +54,14 @@ class BleController(QObject):
         parameter_written(object): Emits only after firmware persistence has
             completed successfully.
         parameter_operation_failed(int, str): Emits a parameter ID and error.
+        prescription_load_started(object): Emits the accepted
+            :class:`Prescription`.
+        prescription_load_progress(object): Emits a confirmed
+            :class:`PrescriptionLoadProgress` step.
+        prescription_loaded(object): Emits the complete
+            :class:`PrescriptionLoadResult`.
+        prescription_load_failed(str, str): Emits the profile ID and an
+            actionable error, including partial progress when applicable.
 
     Attributes:
         _state_lock: Protects controller state shared by the Qt and BLE threads.
@@ -77,12 +87,17 @@ class BleController(QObject):
     parameter_write_started = Signal(int, object)
     parameter_written = Signal(object)
     parameter_operation_failed = Signal(int, str)
+    prescription_load_started = Signal(object)
+    prescription_load_progress = Signal(object)
+    prescription_loaded = Signal(object)
+    prescription_load_failed = Signal(str, str)
 
     def __init__(
         self,
         *,
         transport_factory: TransportFactory | None = None,
         client_factory: ClientFactory | None = None,
+        prescription_loader: PrescriptionLoader | None = None,
         scan_timeout: float = 5.0,
         connection_timeout: float = 15.0,
     ) -> None:
@@ -94,6 +109,8 @@ class BleController(QObject):
             client_factory: Optional zero-argument high-level client factory for
                 tests or alternate board protocol implementations. Mutually
                 exclusive with ``transport_factory``.
+            prescription_loader: Optional application pipeline override for
+                tests or alternate loading policy.
             scan_timeout: Duration of each discovery scan in seconds.
             connection_timeout: Maximum duration of a connection attempt in
                 seconds.
@@ -112,6 +129,7 @@ class BleController(QObject):
         )
         self._scan_timeout = scan_timeout
         self._connection_timeout = connection_timeout
+        self._prescription_loader = prescription_loader or PrescriptionLoader()
 
         self._state_lock = Lock()
         self._ready = Event()
@@ -120,6 +138,7 @@ class BleController(QObject):
         self._startup_error: BaseException | None = None
         self._active_future: Future[Any] | None = None
         self._connected_address: str | None = None
+        self._session: DeviceSession | None = None
         self._pending_connection_address: str | None = None
         self._pending_connection_lost = False
         self._closed = False
@@ -226,6 +245,38 @@ class BleController(QObject):
         future.add_done_callback(
             lambda completed: self._parameter_completed(
                 parameter_id, completed, is_write=True
+            )
+        )
+        return True
+
+    def load_prescription(self, prescription: Prescription) -> bool:
+        """Request validated, sequential persistence of one prescription.
+
+        Args:
+            prescription: Format-versioned DSP parameter values to persist.
+
+        Returns:
+            ``True`` if the complete pipeline was scheduled, otherwise
+            ``False`` when disconnected or another operation is active.
+        """
+        with self._state_lock:
+            if self._connected_address is None or self._session is None:
+                return False
+            session = self._session
+        future = self._schedule(
+            lambda transport: self._prescription_loader.load(
+                transport,
+                session,
+                prescription,
+                self.prescription_load_progress.emit,
+            )
+        )
+        if future is None:
+            return False
+        self.prescription_load_started.emit(prescription)
+        future.add_done_callback(
+            lambda completed: self._prescription_completed(
+                prescription.profile_id, completed
             )
         )
         return True
@@ -412,6 +463,7 @@ class BleController(QObject):
             self._pending_connection_lost = False
             if not connection_lost:
                 self._connected_address = address
+                self._session = session
         if connection_lost:
             self.disconnected.emit(address)
             return
@@ -474,6 +526,30 @@ class BleController(QObject):
         else:
             self.parameter_read.emit(value)
 
+    def _prescription_completed(
+        self,
+        profile_id: str,
+        future: Future[Any],
+    ) -> None:
+        """Publish one complete or failed prescription pipeline result.
+
+        Args:
+            profile_id: Stable profile identifier accepted for loading.
+            future: Completed application-pipeline future.
+        """
+        if not self._finish(future):
+            return
+        try:
+            result = future.result()
+        except FutureCancelledError:
+            return
+        except Exception as error:
+            self.prescription_load_failed.emit(
+                profile_id, self._error_message(error)
+            )
+            return
+        self.prescription_loaded.emit(result)
+
     def _disconnection_completed(self, address: str, future: Future[Any]) -> None:
         """Publish the outcome of an explicit disconnection request.
 
@@ -510,6 +586,7 @@ class BleController(QObject):
             if self._closed or self._connected_address != address:
                 return
             self._connected_address = None
+            self._session = None
             active_future = self._active_future
         if active_future is not None and not active_future.done():
             active_future.cancel()

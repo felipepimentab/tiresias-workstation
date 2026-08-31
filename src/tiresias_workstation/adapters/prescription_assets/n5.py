@@ -2,6 +2,8 @@
 
 from tiresias_workstation.domain.dsp_contract import DspParameterId
 from tiresias_workstation.domain.prescriptions import (
+    PRESCRIPTION_FORMAT_NAME,
+    PRESCRIPTION_FORMAT_VERSION,
     Prescription,
     PrescriptionParameter,
     PrescriptionSource,
@@ -15,8 +17,8 @@ N5_PRESCRIPTION = Prescription(
         "CAMFIT prescription for the Bisgaard N5 standard audiogram "
         "(severe)."
     ),
-    format_name="SigmaDSP 5.23 big-endian parameter words",
-    format_version=1,
+    format_name=PRESCRIPTION_FORMAT_NAME,
+    format_version=PRESCRIPTION_FORMAT_VERSION,
     parameters=(
         PrescriptionParameter(
             DspParameterId.BAND_1_COMPRESSOR_LUT,

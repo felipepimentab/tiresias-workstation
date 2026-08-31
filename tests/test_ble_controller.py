@@ -7,7 +7,11 @@ import unittest
 from PySide6.QtTest import QSignalSpy
 from PySide6.QtWidgets import QApplication
 
+from tiresias_workstation.adapters.bundled_prescriptions import N1_PRESCRIPTION
 from tiresias_workstation.application.ble_controller import BleController
+from tiresias_workstation.application.prescription_loader import (
+    PrescriptionLoadResult,
+)
 from tiresias_workstation.domain.devices import DiscoveredDevice
 from tiresias_workstation.domain.dsp_contract import (
     DSP_PARAMETER_CONTRACT_CRC32,
@@ -61,6 +65,7 @@ class FakeTransport:
         self.connected_address: str | None = None
         self.disconnected_callback = None
         self.disconnect_during_session_read = False
+        self.parameter_writes: list[tuple[int, bytes]] = []
 
     async def scan(self, on_device, *, timeout):
         del timeout
@@ -103,6 +108,7 @@ class FakeTransport:
         return ParameterValue(parameter_id, b"\x00\x80\x00\x00", 4)
 
     async def write_parameter(self, parameter_id, value):
+        self.parameter_writes.append((parameter_id, value))
         await asyncio.sleep(0)
         return ParameterValue(parameter_id, value, 5)
 
@@ -172,6 +178,26 @@ class BleControllerTest(unittest.TestCase):
         self.wait_for_signal(disconnected_spy)
 
         self.assertEqual(connected_spy.count(), 0)
+
+    def test_loads_a_prescription_through_one_controller_operation(self):
+        """Publish progress and completion for the reusable loading pipeline."""
+        session_spy = QSignalSpy(self.controller.session_loaded)
+        self.assertTrue(self.controller.connect("AA:BB:CC:DD:EE:FF"))
+        self.wait_for_signal(session_spy)
+        progress_spy = QSignalSpy(self.controller.prescription_load_progress)
+        loaded_spy = QSignalSpy(self.controller.prescription_loaded)
+
+        self.assertTrue(self.controller.load_prescription(N1_PRESCRIPTION))
+        self.wait_for_signal(loaded_spy)
+
+        result = loaded_spy.at(0)[0]
+        self.assertIsInstance(result, PrescriptionLoadResult)
+        self.assertEqual(result.profile_id, "N1")
+        self.assertEqual(progress_spy.count(), 11)
+        self.assertEqual(
+            [parameter_id for parameter_id, _ in self.transport.parameter_writes],
+            list(range(3, 14)),
+        )
 
 
 if __name__ == "__main__":

@@ -6,11 +6,16 @@ storage format, transport, UI toolkit, or prescription engine.
 
 from dataclasses import dataclass
 import hashlib
+from typing import Protocol
 
 from tiresias_workstation.domain.dsp_contract import (
     DSP_PARAMETERS_BY_ID,
     DspParameterId,
 )
+
+
+PRESCRIPTION_FORMAT_NAME = "SigmaDSP 5.23 big-endian parameter words"
+PRESCRIPTION_FORMAT_VERSION = 1
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,6 +66,8 @@ class Prescription:
 
     def __post_init__(self) -> None:
         """Validate identifiers, contract sizes, and bundled data integrity."""
+        if not self.parameters:
+            raise ValueError("A prescription must contain at least one parameter.")
         seen_ids: set[DspParameterId] = set()
         for parameter in self.parameters:
             if parameter.parameter_id in seen_ids:
@@ -116,3 +123,15 @@ class Prescription:
             if parameter.parameter_id == parameter_id:
                 return parameter
         raise KeyError(parameter_id)
+
+
+class PrescriptionCatalog(Protocol):
+    """Provide prescriptions independently of their storage or origin."""
+
+    def list_prescriptions(self) -> tuple[Prescription, ...]:
+        """Return every available prescription in display order."""
+        ...
+
+    def get(self, profile_id: str) -> Prescription:
+        """Return one prescription by stable profile identifier."""
+        ...
