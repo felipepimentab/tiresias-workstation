@@ -13,9 +13,9 @@ algorithms. In this project, “the ten standard prescriptions” is shorthand f
 the ten existing prescription results and byte tables associated with those
 audiograms.
 
-The tables already exist in another repository. Their import mechanism is
-still to be selected. Whichever mechanism is chosen, each bundled asset should
-carry:
+All ten prescriptions are bundled in the workstation as immutable Python
+assets whose opaque bytes are mapped to the fixed DSP parameter IDs. Each
+bundled prescription carries:
 
 - Stable profile identifier
 - Display name and short description
@@ -23,6 +23,10 @@ carry:
 - Payload length
 - Integrity hash or checksum
 - Provenance or source revision
+
+Each integrity digest covers every stable parameter ID, its payload length,
+and its payload bytes. This catches both byte corruption and accidental
+remapping of a value to the wrong DSP parameter.
 
 The application must validate assets before writing them to a board. It should
 not depend on the external repository being present at runtime.
@@ -46,4 +50,3 @@ Bisgaard, N., Vlaming, M. S. M. G., & Dahlquist, M. (2010). “Standard
 Audiograms for the IEC 60118-15 Measurement Procedure.” *Trends in
 Amplification*, 14(2), 113–120.
 [doi:10.1177/1084713810379609](https://doi.org/10.1177/1084713810379609)
-
