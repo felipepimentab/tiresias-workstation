@@ -31,6 +31,25 @@ remapping of a value to the wrong DSP parameter.
 The application must validate assets before writing them to a board. It should
 not depend on the external repository being present at runtime.
 
+## Loading pipeline
+
+The supported format is `SigmaDSP 5.23 big-endian parameter words`, version 1.
+A prescription supplies metadata plus an ordered tuple of stable DSP parameter
+IDs and opaque byte arrays. `PrescriptionLoader` accepts this domain model from
+any catalog or future fitting engine; it is not coupled to the bundled assets.
+
+Before the first write, the loader validates the format version and checks that
+every parameter exists on the connected board, has the expected byte count, and
+is writable. It then persists parameters sequentially and reports confirmed
+parameter and byte progress. Firmware currently commits each four-byte LUT
+chunk independently. If a transfer fails, the active parameter may therefore
+be partial; the reported error instructs the user to retry the complete
+prescription.
+
+The current firmware advertises deferred DSP application. A successful load
+means all prescription bytes were confirmed and persisted on the board; live
+codec programming remains a separate firmware milestone.
+
 ## Future generation
 
 A future workflow will accept an audiogram and ask a prescription engine to

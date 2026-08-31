@@ -29,7 +29,9 @@ packets or generate DSP parameters.
 ### Application
 
 Coordinates complete operations such as scan, connect, read device information,
-and apply a prescription. It owns progress, cancellation, and error reporting.
+and apply a prescription. `PrescriptionLoader` preflights the complete format
+and connected-device contract before serializing parameter writes. The Qt
+controller owns scheduling and publishes progress, completion, and errors.
 
 ### Domain
 
@@ -51,10 +53,14 @@ Bleak, pyClarity, or a particular board protocol.
 
 - `TiresiasClient`: ready-session and stable-ID parameter operations.
 - `PrescriptionCatalog`: available named, precomputed parameter tables.
+- `PrescriptionLoader`: applies any validated prescription independently of its
+  catalog or generation source.
 - `PrescriptionEngine`: generates a parameter table from fitting inputs.
 
-The UI applies a parameter table without knowing whether it came from a bundled
-asset, pyClarity, or another prescription engine.
+The UI applies a `Prescription` without knowing whether it came from a bundled
+asset, pyClarity, or another prescription engine. The same loader therefore
+supports future custom prescriptions that use the supported format and fixed
+parameter contract.
 
 For the architecture-validation MVP, `BleakDeviceTransport` owns generic BLE
 and GATT mechanics while `TiresiasProtocolClient` owns the board protocol. The

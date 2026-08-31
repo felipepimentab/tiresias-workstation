@@ -43,10 +43,12 @@ firmware and never cross BLE.
 
 All parameters are opaque byte arrays. The contract gives each parameter a
 stable ID, block ID, byte count, and access flags, without assigning numerical
-meaning or byte order. Its CRC32 is currently `0x22045c5c`. Each compressor LUT
+meaning or byte order. Its CRC32 is currently `0x098986fa`. Each compressor LUT
 contains 136 bytes and the Soft Clip LUT contains 180 bytes. The workstation
 reads parameters sequentially in four-byte chunks and requires one stable
-revision across the assembled byte array. LUT writes remain unsupported.
+revision across an assembled read. Compressor LUT writes are supported;
+firmware persists each chunk separately, so the client returns the final
+confirmed revision of a multi-chunk write.
 
 Firmware currently advertises deferred DSP access while its Codec Adapter
 parameter operations remain hardware-validation stubs. All reads use the

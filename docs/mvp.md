@@ -14,7 +14,8 @@ changing supported opaque parameter byte arrays.
 4. The application validates the shared fixed contract and displays its blocks and parameters.
 5. The user reads a parameter by stable ID and supplies a complete byte array where writable.
 6. The application reports success only after firmware confirms flash commit.
-7. The user can repeat reads and writes without reconnecting.
+7. The user selects a bundled prescription and loads its complete parameter set.
+8. The user can repeat reads, writes, and prescription loads without reconnecting.
 
 ## Included
 
@@ -24,6 +25,8 @@ changing supported opaque parameter byte arrays.
 - Basic device-information view
 - Shared fixed contract with ID, version, count, and CRC validation
 - Stable-ID, byte-offset reads and persistent opaque-byte writes
+- N1–N7/S1–S3 catalog selection and whole-profile persistence
+- Format and device-contract preflight before prescription transfer
 - Correlated progress and actionable terminal error reporting
 - Diagnostic logging useful during board characterization
 
@@ -34,7 +37,6 @@ changing supported opaque parameter byte arrays.
 - NAL-NL2 integration
 - Raw-address DSP access
 - Atomic multi-chunk LUT writes
-- Bundled N1–N7/S1–S3 whole-profile transfer
 - Generation of SigmaStudio parameter tables
 - Firmware update support
 - Clinical fitting or patient-data management
@@ -43,6 +45,7 @@ changing supported opaque parameter byte arrays.
 
 This architecture-validation MVP is complete when a user can connect to a
 supported board, validate the protocol and contract fingerprint, read every exposed
-parameter, and persist every writable byte array without restarting either side.
-Each byte-chunk operation must have an unambiguous correlated result, and each write
-must have a firmware-confirmed revision.
+parameter, persist every writable byte array, and load every bundled prescription
+without restarting either side. Each byte-chunk operation must have an
+unambiguous correlated result, and each write must have a firmware-confirmed
+revision.

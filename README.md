@@ -4,8 +4,9 @@ PySide6 and Bleak desktop application for the Tiresias DK.
 
 The application identifies a Tiresias DK by its advertised custom-service UUID,
 connects, displays standard and custom device information, validates the DSP
-parameter contract, and supports stable-ID reads and persistent scalar writes. BLE work
-runs outside the UI thread so the window remains responsive.
+parameter contract, supports stable-ID parameter access, and persistently loads
+the ten bundled standard-audiogram prescriptions. BLE work runs outside the UI
+thread so the window remains responsive.
 
 Product requirements, architecture, and the development roadmap are indexed in
 [the project documentation](docs/README.md).
@@ -74,16 +75,20 @@ not apparent from the code itself.
 src/tiresias_workstation/
 ├── adapters/                    Bleak and other infrastructure integrations
 │   ├── bleak_adapter.py         Bleak discovery and connection transport
+│   ├── bundled_prescriptions.py Catalog of validated prescription assets
 │   └── tiresias_protocol.py     Tiresias UUIDs, records, and correlation
 ├── application/                 Workstation use-case coordination
-│   └── ble_controller.py        Background asyncio and Qt signal coordinator
+│   ├── ble_controller.py        Background asyncio and Qt signal coordinator
+│   └── prescription_loader.py   Format and contract preflight plus transfer pipeline
 ├── domain/                      Platform-neutral models and interfaces
 │   ├── devices.py               BLE device model and transport protocol
 │   ├── dsp_contract.py          Fixed block names, parameter names, IDs, and metadata
+│   ├── prescriptions.py         Prescription format, values, and catalog interface
 │   └── tiresias.py              Service models and high-level client protocol
 ├── presentation/                Qt widgets and windows
 │   ├── device_discovery_screen.py
 │   ├── device_control_screen.py
+│   ├── prescription_screen.py
 │   └── main_window.py
 ├── __main__.py                  Support for `python -m tiresias_workstation`
 └── main.py                      QApplication setup and application entry point
