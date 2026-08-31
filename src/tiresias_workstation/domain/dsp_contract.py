@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from enum import IntEnum, IntFlag
 
 
-DSP_PARAMETER_CONTRACT_CRC32 = 0x22045C5C
+DSP_PARAMETER_CONTRACT_CRC32 = 0x098986FA
 
 
 class DspBlockId(IntEnum):
@@ -136,48 +136,56 @@ DSP_PARAMETERS = (
         DspBlockId.BAND_1_COMPRESSOR,
         "LUT",
         136,
+        DspParameterFlag.WRITABLE,
     ),
     DspParameterDefinition(
         DspParameterId.BAND_2_COMPRESSOR_LUT,
         DspBlockId.BAND_2_COMPRESSOR,
         "LUT",
         136,
+        DspParameterFlag.WRITABLE,
     ),
     DspParameterDefinition(
         DspParameterId.BAND_3_COMPRESSOR_LUT,
         DspBlockId.BAND_3_COMPRESSOR,
         "LUT",
         136,
+        DspParameterFlag.WRITABLE,
     ),
     DspParameterDefinition(
         DspParameterId.BAND_4_COMPRESSOR_LUT,
         DspBlockId.BAND_4_COMPRESSOR,
         "LUT",
         136,
+        DspParameterFlag.WRITABLE,
     ),
     DspParameterDefinition(
         DspParameterId.BAND_5_COMPRESSOR_LUT,
         DspBlockId.BAND_5_COMPRESSOR,
         "LUT",
         136,
+        DspParameterFlag.WRITABLE,
     ),
     DspParameterDefinition(
         DspParameterId.BAND_6_COMPRESSOR_LUT,
         DspBlockId.BAND_6_COMPRESSOR,
         "LUT",
         136,
+        DspParameterFlag.WRITABLE,
     ),
     DspParameterDefinition(
         DspParameterId.BAND_7_COMPRESSOR_LUT,
         DspBlockId.BAND_7_COMPRESSOR,
         "LUT",
         136,
+        DspParameterFlag.WRITABLE,
     ),
     DspParameterDefinition(
         DspParameterId.BAND_8_COMPRESSOR_LUT,
         DspBlockId.BAND_8_COMPRESSOR,
         "LUT",
         136,
+        DspParameterFlag.WRITABLE,
     ),
     DspParameterDefinition(
         DspParameterId.PHASE_COMP_GAIN_1,

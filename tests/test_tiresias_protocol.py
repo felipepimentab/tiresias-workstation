@@ -48,6 +48,7 @@ class FakeGattTransport:
         self.callback = None
         self.result = 0
         self.emit_response = True
+        self.advance_write_revision = False
         self.last_write = None
         self.writes: list[bytes] = []
         self.reads: list[str] = []
@@ -87,6 +88,11 @@ class FakeGattTransport:
             if opcode == 1
             else request_data
         )
+        revision = (
+            4 + byte_offset // 4
+            if opcode == 2 and self.advance_write_revision
+            else 4
+        )
         payload = struct.pack(
             "<BBIBB4sI",
             opcode,
@@ -95,7 +101,7 @@ class FakeGattTransport:
             parameter_id,
             byte_offset,
             response_data,
-            4,
+            revision,
         )
         if self.emit_response:
             self.callback(payload)
@@ -176,6 +182,16 @@ class TiresiasProtocolClientTest(unittest.IsolatedAsyncioTestCase):
             struct.unpack("<BBIBB4s", payload)[3:],
             (11, 0, b"\x01\x00\x00\x00"),
         )
+
+    async def test_accepts_revision_advances_during_multi_chunk_write(self):
+        """Return the final revision when firmware commits each LUT chunk."""
+        self.transport.advance_write_revision = True
+        data = bytes(range(136))
+
+        written = await self.client.write_parameter(3, data)
+
+        self.assertEqual(written.data, data)
+        self.assertEqual(written.parameter_revision, 37)
 
     async def test_surfaces_device_rejection(self):
         """Translate a terminal firmware result into an actionable error."""

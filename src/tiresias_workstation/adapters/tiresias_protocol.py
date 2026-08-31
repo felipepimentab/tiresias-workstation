@@ -254,6 +254,7 @@ class TiresiasProtocolClient:
 
         received_data = bytearray()
         revisions: set[int] = set()
+        final_revision = 0
         await self._transport.start_notifications(RESPONSE_UUID, response_received)
         try:
             for byte_offset in range(0, len(request_data), _PARAMETER_CHUNK_SIZE):
@@ -307,12 +308,15 @@ class TiresiasProtocolClient:
                 remaining = len(request_data) - byte_offset
                 received_data.extend(response_data[:remaining])
                 revisions.add(revision)
+                final_revision = revision
         finally:
             await self._transport.stop_notifications(RESPONSE_UUID)
 
-        if len(revisions) != 1:
-            raise ProtocolError("Parameter revision changed during a multi-chunk operation.")
-        return bytes(received_data), revisions.pop()
+        if opcode == _GET_PARAMETER and len(revisions) != 1:
+            raise ProtocolError(
+                "Parameter revision changed during a multi-chunk read."
+            )
+        return bytes(received_data), final_revision
 
     def _allocate_transaction_id(self) -> int:
         """Return a nonzero 32-bit transaction identifier for this process."""
