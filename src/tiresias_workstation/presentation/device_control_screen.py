@@ -5,6 +5,7 @@ never handles characteristic UUIDs, packets, or raw DSP addresses.
 """
 
 from PySide6.QtCore import Qt, Slot
+from PySide6.QtGui import QFontDatabase
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QFormLayout,
@@ -17,7 +18,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
-    QTabWidget,
+    QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -64,35 +65,37 @@ class DeviceControlScreen(QWidget):
         self._set_enabled(False)
 
     def show_board_information(self) -> None:
-        """Select the board-information tab for sidebar navigation."""
-        self._tabs.setCurrentIndex(0)
+        """Select board information through the shared sidebar navigation."""
+        self._pages.setCurrentIndex(0)
+        self._title.setText("Board information")
 
     def show_parameters(self) -> None:
-        """Select the DSP-parameter tab for sidebar navigation."""
-        self._tabs.setCurrentIndex(1)
+        """Select DSP parameters through the shared sidebar navigation."""
+        self._pages.setCurrentIndex(1)
+        self._title.setText("DSP parameters")
 
     def _build_ui(self) -> None:
-        """Construct the board and parameter tabs."""
+        """Construct sidebar-addressable board and parameter pages."""
         self.setObjectName("deviceControlScreen")
-        self.setStyleSheet(_STYLE_SHEET)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(36, 32, 36, 30)
         layout.setSpacing(14)
 
-        self._title = QLabel("Connected Tiresias DK")
+        self._title = QLabel("Board information")
         self._title.setObjectName("controlTitle")
         layout.addWidget(self._title)
         self._summary = QLabel("Connect to a compatible board from Devices.")
         self._summary.setObjectName("controlSummary")
+        self._summary.setWordWrap(True)
         layout.addWidget(self._summary)
 
-        self._tabs = QTabWidget()
-        self._tabs.setObjectName("controlTabs")
-        self._tabs.addTab(self._build_board_tab(), "Board information")
-        self._tabs.addTab(self._build_parameter_tab(), "DSP parameters")
-        layout.addWidget(self._tabs, 1)
+        self._pages = QStackedWidget()
+        self._pages.setObjectName("controlPages")
+        self._pages.addWidget(self._build_board_page())
+        self._pages.addWidget(self._build_parameter_page())
+        layout.addWidget(self._pages, 1)
 
-    def _build_board_tab(self) -> QWidget:
+    def _build_board_page(self) -> QWidget:
         """Build the read-only identity and compatibility view."""
         page = QWidget()
         page.setObjectName("boardInformationPage")
@@ -117,16 +120,19 @@ class DeviceControlScreen(QWidget):
             value = QLabel("—")
             value.setObjectName(f"board_{key}")
             value.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+            value.setWordWrap(True)
             self._board_values[key] = value
-            form.addRow(label_text, value)
+            label = QLabel(label_text)
+            label.setProperty("role", "fieldLabel")
+            form.addRow(label, value)
         return page
 
-    def _build_parameter_tab(self) -> QWidget:
+    def _build_parameter_page(self) -> QWidget:
         """Build the fixed-contract table and ID-based controls."""
         page = QWidget()
         page.setObjectName("parameterPage")
         layout = QVBoxLayout(page)
-        layout.setContentsMargins(18, 18, 18, 18)
+        layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(12)
 
         self._parameter_table = QTableWidget(0, 6)
@@ -144,33 +150,51 @@ class DeviceControlScreen(QWidget):
             QAbstractItemView.EditTrigger.NoEditTriggers
         )
         self._parameter_table.verticalHeader().hide()
+        self._parameter_table.verticalHeader().setDefaultSectionSize(36)
+        self._parameter_table.setShowGrid(False)
+        self._parameter_table.setAlternatingRowColors(True)
         header = self._parameter_table.horizontalHeader()
-        for column in (0, 3, 4, 5):
+        header.setDefaultAlignment(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+        )
+        for column in (0, 3, 4):
             header.setSectionResizeMode(column, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(5, QHeaderView.ResizeMode.Interactive)
+        self._parameter_table.setColumnWidth(5, 200)
         layout.addWidget(self._parameter_table, 1)
 
         editor = QFrame()
         editor.setObjectName("parameterEditor")
-        editor_layout = QHBoxLayout(editor)
-        editor_layout.setContentsMargins(14, 10, 10, 10)
+        editor_layout = QVBoxLayout(editor)
+        editor_layout.setContentsMargins(16, 12, 16, 12)
+        editor_layout.setSpacing(10)
         self._selected_parameter = QLabel("Select a DSP parameter")
         self._selected_parameter.setObjectName("selectedParameter")
-        editor_layout.addWidget(self._selected_parameter, 1)
+        self._selected_parameter.setWordWrap(True)
+        editor_layout.addWidget(self._selected_parameter)
+
+        actions = QHBoxLayout()
+        actions.setSpacing(8)
 
         self._value_input = QLineEdit()
         self._value_input.setObjectName("parameterValueInput")
         self._value_input.setPlaceholderText("Hex bytes, for example: 00 00 00 01")
         self._value_input.setMinimumWidth(150)
-        editor_layout.addWidget(self._value_input)
+        self._value_input.setAccessibleName("Parameter value in hexadecimal bytes")
+        self._value_input.setFont(
+            QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
+        )
+        actions.addWidget(self._value_input, 1)
 
         self._read_button = QPushButton("Read")
         self._read_button.setObjectName("readParameterButton")
-        editor_layout.addWidget(self._read_button)
+        actions.addWidget(self._read_button)
         self._write_button = QPushButton("Persist value")
         self._write_button.setObjectName("writeParameterButton")
-        editor_layout.addWidget(self._write_button)
+        actions.addWidget(self._write_button)
+        editor_layout.addLayout(actions)
         layout.addWidget(editor)
 
         status_row = QHBoxLayout()
@@ -439,7 +463,7 @@ class DeviceControlScreen(QWidget):
 
     def _set_enabled(self, enabled: bool) -> None:
         """Enable session content only for a validated ready device."""
-        self._tabs.setEnabled(enabled)
+        self._pages.setEnabled(enabled)
         self._update_actions()
 
     def _update_actions(self) -> None:
@@ -461,47 +485,3 @@ class DeviceControlScreen(QWidget):
         self._message.setProperty("error", error)
         self._message.style().unpolish(self._message)
         self._message.style().polish(self._message)
-
-_STYLE_SHEET = """
-#deviceControlScreen, #boardInformationPage, #parameterPage {
-    background: #ffffff;
-    color: #202123;
-}
-#deviceControlScreen QLabel { color: #202123; }
-#controlTitle { color: #202123; font-size: 24px; font-weight: 600; }
-#controlSummary, #parameterMessage { color: #6e6e73; font-size: 13px; }
-#parameterMessage[error="true"] { color: #c5221f; }
-#controlTabs::pane, #parameterEditor {
-    border: 1px solid #dedede; border-radius: 8px; background: #ffffff;
-}
-#controlTabs QTabBar::tab {
-    background: #f1f1f3;
-    color: #363638;
-    min-width: 118px;
-    padding: 6px 12px;
-}
-#controlTabs QTabBar::tab:selected {
-    background: #2f80ed;
-    color: #ffffff;
-}
-#parameterTable {
-    alternate-background-color: #f7f7f8;
-    background: #ffffff;
-    border: 1px solid #dedede;
-    color: #202123;
-    font-size: 12px;
-}
-#parameterTable QHeaderView::section {
-    background: #f1f1f3;
-    color: #363638;
-}
-#parameterEditor QDoubleSpinBox {
-    background: #ffffff;
-    color: #202123;
-}
-#parameterEditor QPushButton, #refreshParametersButton {
-    color: #202123;
-}
-#selectedParameter { font-size: 13px; font-weight: 500; }
-QPushButton { min-height: 30px; padding: 0 12px; }
-"""
