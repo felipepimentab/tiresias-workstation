@@ -41,8 +41,8 @@
 1. Generate the shared DSP contract from the SigmaStudio `.params` export
 2. Optionally negotiate a device-provided dynamic catalog if product direction requires it
 3. Flexible DSP parameter inspection and editing
-4. Audiogram input and validation
-5. pyClarity/CAMEQ prescription generation
-6. Automatic SigmaStudio parameter-table generation
+4. ✓ Audiogram input and validation
+5. ✓ pyClarity CAMFIT prescription generation
+6. ✓ Automatic calibrated SigmaStudio parameter-table generation
 7. Pluggable prescription engines, including a custom NAL-NL2 adapter
 8. Comparison and characterization tools for prescriptions and board responses

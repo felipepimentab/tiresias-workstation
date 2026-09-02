@@ -12,10 +12,10 @@ Application use cases
       |
 Domain interfaces
       |
-+----------------------+----------------------+-------------------+
-| Tiresias BLE adapter | Prescription catalog | Fitting engines   |
-| Bleak + board GATT    | Bundled byte tables  | Future adapters   |
-+----------------------+----------------------+-------------------+
++----------------------+-----------------------+----------------------------+
+| Tiresias BLE adapter | Prescription catalogs | Fitting + mapping adapters |
+| Bleak + board GATT    | Bundled + local JSON  | pyClarity + SigmaDSP        |
++----------------------+-----------------------+----------------------------+
 ```
 
 ## Modules
@@ -45,9 +45,12 @@ Bleak, pyClarity, or a particular board protocol.
 - **Tiresias protocol:** UUIDs, fixed record decoding, contract compatibility,
   transaction correlation, and firmware result translation.
 - **DSP contract:** fixed block and parameter names, IDs, word counts, and flags.
-- **Bundled prescription catalog:** loads and validates the ten MVP parameter tables.
-- **Future fitting engines:** adapt pyClarity/CAMEQ, NAL-NL2, or other rules to a
-  common prescription interface.
+- **Prescription catalogs:** validate the ten immutable MVP tables and locally
+  generated JSON artifacts behind one catalog interface.
+- **Fitting rules:** adapt pyClarity CAMFIT or future rules such as NAL-NL2 to
+  a common, hardware-independent `PrescriptionTarget`.
+- **DSP mapping:** converts a selected target ear through a versioned detector
+  calibration into the fixed SigmaDSP parameter contract.
 
 ## Main extension points
 
@@ -55,11 +58,13 @@ Bleak, pyClarity, or a particular board protocol.
 - `PrescriptionCatalog`: available named, precomputed parameter tables.
 - `PrescriptionLoader`: applies any validated prescription independently of its
   catalog or generation source.
-- `PrescriptionEngine`: generates a parameter table from fitting inputs.
+- `PrescriptionRule`: generates a full two-ear target from an audiogram.
+- `DspPrescriptionMapper`: converts a target to board-specific parameter values.
+- `GeneratedPrescriptionStore`: persists every inspectable generation stage.
 
 The UI applies a `Prescription` without knowing whether it came from a bundled
 asset, pyClarity, or another prescription engine. The same loader therefore
-supports future custom prescriptions that use the supported format and fixed
+supports generated custom prescriptions that use the supported format and fixed
 parameter contract.
 
 For the architecture-validation MVP, `BleakDeviceTransport` owns generic BLE

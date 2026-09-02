@@ -27,17 +27,18 @@ changing supported opaque parameter byte arrays.
 - Stable-ID, byte-offset reads and persistent opaque-byte writes
 - N1–N7/S1–S3 catalog selection and whole-profile persistence
 - Format and device-contract preflight before prescription transfer
+- Offline two-ear audiogram entry and pyClarity CAMFIT target generation
+- Separate calibrated target-to-DSP mapping with per-stage JSON inspection
+- Named local prescription saving, listing, export, and deletion
 - Correlated progress and actionable terminal error reporting
 - Diagnostic logging useful during board characterization
 
 ## Excluded
 
-- Audiogram entry or import
-- CAMEQ or pyClarity integration
+- Audiogram file import
 - NAL-NL2 integration
 - Raw-address DSP access
 - Atomic multi-chunk LUT writes
-- Generation of SigmaStudio parameter tables
 - Firmware update support
 - Clinical fitting or patient-data management
 

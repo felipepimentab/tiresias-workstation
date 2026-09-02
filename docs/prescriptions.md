@@ -50,18 +50,21 @@ The current firmware advertises deferred DSP application. A successful load
 means all prescription bytes were confirmed and persisted on the board; live
 codec programming remains a separate firmware milestone.
 
-## Future generation
+## Generated custom prescriptions
 
-A future workflow will accept an audiogram and ask a prescription engine to
-produce a fitting and SigmaStudio parameter table:
+The workstation accepts a two-ear audiogram and asks a selectable prescription
+rule to produce a full target before a separate adapter maps one ear to
+SigmaDSP parameter values:
 
 ```text
-Audiogram -> prescription engine -> DSP model -> parameter bytes
+Audiogram -> prescription rule -> prescription target -> DSP mapping -> parameter bytes
 ```
 
-The first planned engine is an adapter around pyClarity's CAMEQ
-implementation. Other engines, including a custom NAL-NL2 wrapper, should
-implement the same application-facing interface.
+The first rule is the compressive CEC1 CAMFIT implementation from pyClarity.
+The full audiogram, target curves, calibrated mapping, and final parameter
+bytes are saved together as versioned JSON. See
+[Audiogram fitting and local prescriptions](audiogram-fitting.md) for the data
+formats, persistence behavior, and extension points.
 
 ## Reference
 
