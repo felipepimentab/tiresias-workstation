@@ -69,8 +69,8 @@ class MainWindow(QMainWindow):
         )
 
         self.setWindowTitle("Tiresias Workstation")
-        self.resize(1080, 720)
-        self.setMinimumSize(820, 560)
+        self.resize(1180, 820)
+        self.setMinimumSize(960, 680)
         self.setDocumentMode(True)
         self.setUnifiedTitleAndToolBarOnMac(True)
 
@@ -89,7 +89,6 @@ class MainWindow(QMainWindow):
             self.prescription_screen.refresh_catalog
         )
         self.setCentralWidget(self._build_application_shell())
-        self.setStyleSheet(_WINDOW_STYLE_SHEET)
         self._controller.session_loaded.connect(self._session_available)
         self._controller.disconnected.connect(self._session_lost)
 
@@ -107,7 +106,7 @@ class MainWindow(QMainWindow):
 
         sidebar = QFrame()
         sidebar.setObjectName("sidebar")
-        sidebar.setFixedWidth(218)
+        sidebar.setFixedWidth(208)
         sidebar_layout = QVBoxLayout(sidebar)
         sidebar_layout.setContentsMargins(12, 16, 12, 14)
         sidebar_layout.setSpacing(3)
@@ -259,57 +258,3 @@ class MainWindow(QMainWindow):
         """
         self._controller.shutdown()
         super().closeEvent(event)
-
-
-_WINDOW_STYLE_SHEET = """
-#applicationShell {
-    background: #ffffff;
-    color: #202123;
-    font-family: "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
-}
-#sidebar {
-    background: #f3f3f3;
-    border: none;
-    border-right: 1px solid #e4e4e4;
-}
-#sidebarBrand {
-    color: #171717;
-    font-size: 15px;
-    font-weight: 600;
-    padding: 5px 8px 18px 8px;
-}
-#sidebarSectionLabel {
-    color: #8e8e93;
-    font-size: 10px;
-    font-weight: 600;
-    padding: 18px 9px 6px 9px;
-}
-#sidebar QPushButton#navigationButton, #devicesNavigationButton,
-#boardNavigationButton, #parametersNavigationButton,
-#prescriptionsNavigationButton, #fittingNavigationButton {
-    background: transparent;
-    border: none;
-    border-radius: 7px;
-    color: #363638;
-    font-size: 13px;
-    font-weight: 400;
-    min-height: 34px;
-    padding: 0 10px;
-    text-align: left;
-}
-#sidebar QPushButton[selected="true"] {
-    background: #e5e5e5;
-    color: #171717;
-    font-weight: 500;
-}
-#sidebar QPushButton#navigationButton:disabled {
-    color: #a2a2a6;
-}
-#productBoundary {
-    border-top: 1px solid #dddddf;
-    color: #8e8e93;
-    font-size: 11px;
-    line-height: 1.4;
-    padding: 14px 8px 3px 8px;
-}
-"""

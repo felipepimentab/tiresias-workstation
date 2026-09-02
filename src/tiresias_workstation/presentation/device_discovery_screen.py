@@ -56,7 +56,6 @@ class DeviceDiscoveryScreen(QWidget):
     def _build_ui(self) -> None:
         """Construct and style the screen's static widget hierarchy."""
         self.setObjectName("deviceDiscoveryScreen")
-        self.setStyleSheet(_STYLE_SHEET)
 
         page_layout = QVBoxLayout(self)
         page_layout.setContentsMargins(36, 32, 36, 30)
@@ -66,12 +65,12 @@ class DeviceDiscoveryScreen(QWidget):
         heading_copy = QVBoxLayout()
         heading_copy.setSpacing(3)
 
-        title = QLabel("Bluetooth devices")
+        title = QLabel("Devices")
         title.setObjectName("pageTitle")
         heading_copy.addWidget(title)
 
         subtitle = QLabel(
-            "Find nearby BLE advertisers, then select one to attempt a connection."
+            "Find and connect to a nearby Tiresias board over Bluetooth."
         )
         subtitle.setObjectName("pageSubtitle")
         subtitle.setWordWrap(True)
@@ -155,6 +154,7 @@ class DeviceDiscoveryScreen(QWidget):
         self._selection_detail.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse
         )
+        self._selection_detail.setWordWrap(True)
         selection_copy.addWidget(self._selection_detail)
         action_layout.addLayout(selection_copy, 1)
 
@@ -523,120 +523,3 @@ class DeviceDiscoveryScreen(QWidget):
         if uuid.startswith("0000") and uuid.endswith(suffix):
             return uuid[4:8].upper()
         return uuid
-
-
-_STYLE_SHEET = """
-#deviceDiscoveryScreen {
-    background: #ffffff;
-    color: #202123;
-    font-family: "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
-}
-#pageTitle {
-    color: #202123;
-    font-size: 24px;
-    font-weight: 600;
-}
-#pageSubtitle, #resultSummary, #messageLabel {
-    color: #6e6e73;
-    font-size: 13px;
-}
-#messageLabel[error="true"] {
-    color: #c5221f;
-}
-#statusBadge {
-    background: transparent;
-    border: none;
-    font-size: 12px;
-    font-weight: 500;
-    padding: 6px 4px;
-}
-#statusBadge[connectionState="idle"] {
-    color: #8e8e93;
-}
-#statusBadge[connectionState="working"] {
-    color: #b26800;
-}
-#statusBadge[connectionState="connected"] {
-    color: #16803a;
-}
-#deviceCard, #actionCard {
-    background: #ffffff;
-    border: 1px solid #dedede;
-    border-radius: 8px;
-}
-#deviceTable {
-    background: transparent;
-    alternate-background-color: #fbfbfb;
-    border: none;
-    border-radius: 8px;
-    color: #2c2c2e;
-    font-size: 12px;
-    selection-background-color: #eeeeef;
-    selection-color: #171717;
-}
-#deviceTable::item {
-    border: none;
-    padding: 7px 10px;
-}
-#deviceTable QHeaderView::section {
-    background: #fafafa;
-    border: none;
-    border-bottom: 1px solid #e3e3e3;
-    color: #6e6e73;
-    font-size: 11px;
-    font-weight: 500;
-    padding: 9px 10px;
-}
-#selectionLabel {
-    color: #8e8e93;
-    font-size: 11px;
-    font-weight: 500;
-}
-#selectionDetail {
-    color: #2c2c2e;
-    font-size: 13px;
-    font-weight: 500;
-}
-QPushButton {
-    border-radius: 6px;
-    font-size: 13px;
-    font-weight: 500;
-    min-height: 32px;
-    padding: 0 14px;
-}
-#scanButton, #connectButton {
-    background: #202123;
-    border: 1px solid #202123;
-    color: #ffffff;
-}
-#scanButton:hover, #connectButton:hover {
-    background: #343437;
-    border-color: #343437;
-}
-#scanButton:pressed, #connectButton:pressed {
-    background: #111111;
-}
-#disconnectButton {
-    background: #f7f7f7;
-    border: 1px solid #d5d5d5;
-    color: #2c2c2e;
-}
-#disconnectButton:hover {
-    background: #ededed;
-}
-QPushButton:disabled {
-    background: #f1f1f1;
-    border-color: #e5e5e5;
-    color: #a2a2a6;
-}
-#scanProgress {
-    background: #e7e7e7;
-    border: none;
-    border-radius: 2px;
-    max-height: 4px;
-}
-#scanProgress::chunk {
-    background: #6e6e73;
-    border-radius: 2px;
-}
-"""
