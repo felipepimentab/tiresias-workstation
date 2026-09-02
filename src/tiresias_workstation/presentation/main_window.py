@@ -1,6 +1,8 @@
 """Define the top-level Tiresias Workstation window."""
 
-from PySide6.QtCore import Qt, Slot
+from pathlib import Path
+
+from PySide6.QtCore import QStandardPaths, Qt, Slot
 from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import (
     QFrame,
@@ -14,10 +16,16 @@ from PySide6.QtWidgets import (
 )
 
 from tiresias_workstation.application.ble_controller import BleController
-from tiresias_workstation.adapters.bundled_prescriptions import (
-    BUNDLED_PRESCRIPTION_CATALOG,
+from tiresias_workstation.application.default_prescriptions import (
+    create_default_prescription_services,
+)
+from tiresias_workstation.application.prescription_workbench import (
+    PrescriptionWorkbench,
 )
 from tiresias_workstation.domain.prescriptions import PrescriptionCatalog
+from tiresias_workstation.presentation.audiogram_fitting_screen import (
+    AudiogramFittingScreen,
+)
 from tiresias_workstation.presentation.device_discovery_screen import (
     DeviceDiscoveryScreen,
 )
@@ -32,6 +40,7 @@ class MainWindow(QMainWindow):
         self,
         controller: BleController | None = None,
         prescription_catalog: PrescriptionCatalog | None = None,
+        prescription_workbench: PrescriptionWorkbench | None = None,
     ) -> None:
         """Initialize the workstation window.
 
@@ -40,12 +49,23 @@ class MainWindow(QMainWindow):
                 :class:`BleController` is created when omitted.
             prescription_catalog: Optional catalog for alternate or custom
                 prescription sources.
+            prescription_workbench: Optional custom fitting coordinator for
+                tests or alternate rule and storage configurations.
         """
         super().__init__()
 
         self._controller = controller or BleController()
-        self._prescription_catalog = (
-            prescription_catalog or BUNDLED_PRESCRIPTION_CATALOG
+        storage_directory = Path(
+            QStandardPaths.writableLocation(
+                QStandardPaths.StandardLocation.AppDataLocation
+            )
+        ) / "generated-prescriptions"
+        default_workbench, default_catalog = create_default_prescription_services(
+            storage_directory
+        )
+        self._prescription_catalog = prescription_catalog or default_catalog
+        self._prescription_workbench = (
+            prescription_workbench or default_workbench
         )
 
         self.setWindowTitle("Tiresias Workstation")
@@ -58,6 +78,15 @@ class MainWindow(QMainWindow):
         self.device_control_screen = DeviceControlScreen(self._controller)
         self.prescription_screen = PrescriptionScreen(
             self._controller, self._prescription_catalog
+        )
+        self.audiogram_fitting_screen = AudiogramFittingScreen(
+            self._prescription_workbench
+        )
+        self.audiogram_fitting_screen.prescription_saved.connect(
+            self.prescription_screen.refresh_catalog
+        )
+        self.audiogram_fitting_screen.prescription_deleted.connect(
+            self.prescription_screen.refresh_catalog
         )
         self.setCentralWidget(self._build_application_shell())
         self.setStyleSheet(_WINDOW_STYLE_SHEET)
@@ -105,12 +134,14 @@ class MainWindow(QMainWindow):
         sidebar_layout.addWidget(self._board_button)
         sidebar_layout.addWidget(self._parameters_button)
         sidebar_layout.addWidget(self._prescriptions_button)
+        self._fitting_button = self._navigation_row("Audiogram fitting")
+        self._fitting_button.setObjectName("fittingNavigationButton")
+        sidebar_layout.addWidget(self._fitting_button)
         sidebar_layout.addWidget(self._navigation_row("Diagnostics", enabled=False))
 
         future_label = QLabel("LATER RELEASES")
         future_label.setObjectName("sidebarSectionLabel")
         sidebar_layout.addWidget(future_label)
-        sidebar_layout.addWidget(self._navigation_row("Audiogram fitting", enabled=False))
         sidebar_layout.addWidget(self._navigation_row("DSP editor", enabled=False))
         sidebar_layout.addStretch()
 
@@ -123,12 +154,14 @@ class MainWindow(QMainWindow):
         self._content_stack.addWidget(self.device_discovery_screen)
         self._content_stack.addWidget(self.device_control_screen)
         self._content_stack.addWidget(self.prescription_screen)
+        self._content_stack.addWidget(self.audiogram_fitting_screen)
         shell_layout.addWidget(self._content_stack, 1)
 
         self._devices_button.clicked.connect(self._show_devices)
         self._board_button.clicked.connect(self._show_board)
         self._parameters_button.clicked.connect(self._show_parameters)
         self._prescriptions_button.clicked.connect(self._show_prescriptions)
+        self._fitting_button.clicked.connect(self._show_fitting)
         return shell
 
     @staticmethod
@@ -178,8 +211,16 @@ class MainWindow(QMainWindow):
     @Slot()
     def _show_prescriptions(self) -> None:
         """Navigate to catalog-based prescription loading."""
+        self.prescription_screen.refresh_catalog()
         self._content_stack.setCurrentWidget(self.prescription_screen)
         self._select_navigation(self._prescriptions_button)
+
+    @Slot()
+    def _show_fitting(self) -> None:
+        """Navigate to local audiogram fitting and artifact management."""
+        self._content_stack.setCurrentWidget(self.audiogram_fitting_screen)
+        self.audiogram_fitting_screen.refresh_saved()
+        self._select_navigation(self._fitting_button)
 
     @Slot(object)
     def _session_available(self, _session: object) -> None:
@@ -204,6 +245,7 @@ class MainWindow(QMainWindow):
             self._board_button,
             self._parameters_button,
             self._prescriptions_button,
+            self._fitting_button,
         ):
             button.setProperty("selected", button is selected)
             button.style().unpolish(button)
@@ -244,7 +286,7 @@ _WINDOW_STYLE_SHEET = """
 }
 #sidebar QPushButton#navigationButton, #devicesNavigationButton,
 #boardNavigationButton, #parametersNavigationButton,
-#prescriptionsNavigationButton {
+#prescriptionsNavigationButton, #fittingNavigationButton {
     background: transparent;
     border: none;
     border-radius: 7px;

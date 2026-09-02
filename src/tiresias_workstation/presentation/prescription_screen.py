@@ -54,6 +54,7 @@ class PrescriptionScreen(QWidget):
         """
         super().__init__()
         self._controller = controller
+        self._catalog = catalog
         prescriptions = catalog.list_prescriptions()
         self._prescriptions = {
             prescription.profile_id: prescription
@@ -76,12 +77,12 @@ class PrescriptionScreen(QWidget):
         heading = QHBoxLayout()
         heading_copy = QVBoxLayout()
         heading_copy.setSpacing(3)
-        title = QLabel("Standard prescriptions")
+        title = QLabel("Prescriptions")
         title.setObjectName("prescriptionTitle")
         heading_copy.addWidget(title)
         subtitle = QLabel(
-            "Select a validated parameter profile and persist it to the "
-            "connected Tiresias Board."
+            "Select a bundled or locally generated parameter profile and "
+            "persist it to the connected Tiresias Board."
         )
         subtitle.setObjectName("prescriptionSubtitle")
         subtitle.setWordWrap(True)
@@ -180,7 +181,7 @@ class PrescriptionScreen(QWidget):
         """Render catalog metadata without interpreting opaque DSP values."""
         self._table.setRowCount(len(prescriptions))
         for row, prescription in enumerate(prescriptions):
-            profile = QTableWidgetItem(prescription.profile_id)
+            profile = QTableWidgetItem(prescription.display_name)
             profile.setData(Qt.ItemDataRole.UserRole, prescription.profile_id)
             values = (
                 profile,
@@ -190,6 +191,27 @@ class PrescriptionScreen(QWidget):
             )
             for column, item in enumerate(values):
                 self._table.setItem(row, column, item)
+
+    @Slot()
+    @Slot(str)
+    def refresh_catalog(self, _artifact_id: str = "") -> None:
+        """Reload bundled and mutable catalog entries while preserving selection."""
+        selected = self._selected_prescription()
+        selected_id = selected.profile_id if selected is not None else None
+        prescriptions = self._catalog.list_prescriptions()
+        self._prescriptions = {
+            prescription.profile_id: prescription for prescription in prescriptions
+        }
+        self._populate_catalog(prescriptions)
+        selected_row = 0 if prescriptions else -1
+        if selected_id is not None:
+            for row, prescription in enumerate(prescriptions):
+                if prescription.profile_id == selected_id:
+                    selected_row = row
+                    break
+        if selected_row >= 0:
+            self._table.selectRow(selected_row)
+        self._selection_changed()
 
     @Slot(object)
     def _session_loaded(self, payload: object) -> None:

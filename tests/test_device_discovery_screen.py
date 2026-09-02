@@ -1,5 +1,7 @@
 """Exercise the discovery screen with synchronous controller signals."""
 
+from pathlib import Path
+import tempfile
 import unittest
 
 from PySide6.QtCore import QObject, Signal
@@ -15,8 +17,12 @@ from tiresias_workstation.application.prescription_loader import (
     PrescriptionLoadProgress,
     PrescriptionLoadResult,
 )
+from tiresias_workstation.application.default_prescriptions import (
+    create_default_prescription_services,
+)
 from tiresias_workstation.domain.devices import DiscoveredDevice
 from tiresias_workstation.domain.dsp_contract import DSP_PARAMETERS_BY_ID
+from tiresias_workstation.domain.fittings import Audiogram
 from test_ble_controller import device_session
 from tiresias_workstation.domain.tiresias import ParameterValue
 from tiresias_workstation.presentation.main_window import MainWindow
@@ -134,11 +140,16 @@ class DeviceDiscoveryScreenTest(unittest.TestCase):
 
     def setUp(self):
         self.controller = FakeController()
-        self.window = MainWindow(self.controller)
+        self.directory = tempfile.TemporaryDirectory()
+        workbench, catalog = create_default_prescription_services(
+            Path(self.directory.name)
+        )
+        self.window = MainWindow(self.controller, catalog, workbench)
         self.screen = self.window.device_discovery_screen
 
     def tearDown(self):
         self.window.close()
+        self.directory.cleanup()
 
     def test_scan_populates_table_and_connects_selected_device(self):
         """Render a discovered device and connect the selected table row."""
@@ -208,8 +219,8 @@ class DeviceDiscoveryScreenTest(unittest.TestCase):
         progress = screen.findChild(QProgressBar, "prescriptionProgress")
 
         self.assertEqual(table.rowCount(), 10)
-        self.assertEqual(table.item(0, 0).text(), "N1")
-        self.assertEqual(table.item(9, 0).text(), "S3")
+        self.assertEqual(table.item(0, 0).text(), "N1 standard audiogram")
+        self.assertEqual(table.item(9, 0).text(), "S3 standard audiogram")
         table.selectRow(1)
         load_button.click()
 
@@ -220,6 +231,30 @@ class DeviceDiscoveryScreenTest(unittest.TestCase):
         self.assertEqual(progress.maximum(), 1100)
         self.assertEqual(progress.value(), 1100)
         self.assertIn("N2 loaded", screen._message.text())
+
+    def test_local_fitting_is_available_offline_and_refreshes_loading_catalog(self):
+        """Reuse the normal board-loading flow for a custom saved prescription."""
+        navigation = self.window.findChild(QPushButton, "fittingNavigationButton")
+        self.assertTrue(navigation.isEnabled())
+        navigation.click()
+        fitting = self.window.audiogram_fitting_screen
+        artifact = self.window._prescription_workbench.generate(
+            Audiogram((250.0, 500.0), (10.0, 20.0), (15.0, 25.0)),
+            rule_id="camfit-compressive-cec1", name="My custom fitting", ear="left",
+        )
+        fitting._show_artifact(artifact)
+        fitting._save_current()
+        table = self.window.prescription_screen.findChild(
+            QTableWidget, "prescriptionTable"
+        )
+        self.assertEqual(table.rowCount(), 11)
+        self.assertEqual(table.item(10, 0).text(), "My custom fitting")
+        self.controller.session_loaded.emit(self.controller.session)
+        table.selectRow(10)
+        self.window.prescription_screen.findChild(
+            QPushButton, "loadPrescriptionButton"
+        ).click()
+        self.assertEqual(self.controller.prescription_loads, [artifact.prescription])
 
 
 if __name__ == "__main__":
