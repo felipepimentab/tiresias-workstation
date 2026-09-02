@@ -18,6 +18,25 @@ PRESCRIPTION_FORMAT_NAME = "SigmaDSP 5.23 big-endian parameter words"
 PRESCRIPTION_FORMAT_VERSION = 1
 
 
+def prescription_sha256(
+    parameters: tuple["PrescriptionParameter", ...],
+) -> str:
+    """Return the canonical parameter identifier-and-value digest.
+
+    Args:
+        parameters: Ordered DSP parameter values.
+
+    Returns:
+        SHA-256 digest binding identifiers, payload sizes, and payload bytes.
+    """
+    digest = hashlib.sha256()
+    for parameter in parameters:
+        digest.update(bytes((int(parameter.parameter_id),)))
+        digest.update(len(parameter.data).to_bytes(2, byteorder="big"))
+        digest.update(parameter.data)
+    return digest.hexdigest()
+
+
 @dataclass(frozen=True, slots=True)
 class PrescriptionParameter:
     """Associate one stable DSP parameter identifier with its opaque bytes."""
@@ -38,7 +57,7 @@ class PrescriptionSource:
 
 @dataclass(frozen=True, slots=True)
 class Prescription:
-    """Describe a complete, precomputed fitting for a standard audiogram.
+    """Describe transport-ready DSP values for a bundled or custom fitting.
 
     The integrity digest covers each parameter identifier, its two-byte
     big-endian payload length, and its payload bytes in tuple order. This binds
@@ -100,12 +119,7 @@ class Prescription:
     @property
     def sha256(self) -> str:
         """Return the canonical parameter identifier-and-value digest."""
-        digest = hashlib.sha256()
-        for parameter in self.parameters:
-            digest.update(bytes((int(parameter.parameter_id),)))
-            digest.update(len(parameter.data).to_bytes(2, byteorder="big"))
-            digest.update(parameter.data)
-        return digest.hexdigest()
+        return prescription_sha256(self.parameters)
 
     def parameter(self, parameter_id: DspParameterId) -> PrescriptionParameter:
         """Return one parameter value by its stable DSP identifier.
