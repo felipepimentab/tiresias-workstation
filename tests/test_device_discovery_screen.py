@@ -26,6 +26,7 @@ from tiresias_workstation.domain.fittings import Audiogram
 from test_ble_controller import device_session
 from tiresias_workstation.domain.tiresias import ParameterValue
 from tiresias_workstation.presentation.main_window import MainWindow
+from tiresias_workstation.presentation.theme import apply_light_theme
 
 
 class FakeController(QObject):
@@ -137,6 +138,7 @@ class DeviceDiscoveryScreenTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.app = QApplication.instance() or QApplication([])
+        apply_light_theme(cls.app)
 
     def setUp(self):
         self.controller = FakeController()

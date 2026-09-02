@@ -26,6 +26,7 @@ from tiresias_workstation.application.prescription_workbench import (
 from tiresias_workstation.presentation.audiogram_fitting_screen import (
     AudiogramFittingScreen,
 )
+from tiresias_workstation.presentation.theme import apply_light_theme
 
 
 class AudiogramFittingScreenTests(unittest.TestCase):
@@ -35,6 +36,7 @@ class AudiogramFittingScreenTests(unittest.TestCase):
     def setUpClass(cls):
         """Create one offscreen-compatible Qt application."""
         cls.app = QApplication.instance() or QApplication([])
+        apply_light_theme(cls.app)
 
     def setUp(self):
         """Build an isolated workbench and screen for each test."""
