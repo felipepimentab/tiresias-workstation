@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QRunnable, QThreadPool, Qt, Signal, Slot
@@ -119,45 +120,59 @@ class AudiogramFittingScreen(QWidget):
     def _build_ui(self) -> None:
         """Construct audiogram, target preview, and local catalog controls."""
         self.setObjectName("audiogramFittingScreen")
-        self.setStyleSheet(_STYLE_SHEET)
         root = QVBoxLayout(self)
-        root.setContentsMargins(32, 26, 32, 26)
-        root.setSpacing(12)
+        root.setContentsMargins(36, 32, 36, 30)
+        root.setSpacing(14)
 
         title = QLabel("Audiogram fitting")
         title.setObjectName("fittingTitle")
         root.addWidget(title)
         subtitle = QLabel(
-            "Generate an inspectable CAMFIT target, map one ear to the monaural "
-            "Tiresias DSP contract, and optionally save the complete artifact."
+            "Create a prescription from an audiogram. Preview, save, or export "
+            "every stage — no board connection required."
         )
         subtitle.setObjectName("fittingSubtitle")
         subtitle.setWordWrap(True)
         root.addWidget(subtitle)
 
         controls = QHBoxLayout()
-        controls.addWidget(QLabel("Name"))
+        controls.setSpacing(12)
         self._name = QLineEdit()
         self._name.setObjectName("customPrescriptionName")
         self._name.setMaxLength(80)
         self._name.setPlaceholderText("Custom prescription name")
-        controls.addWidget(self._name, 2)
-        controls.addWidget(QLabel("Rule"))
+        self._name.setMinimumWidth(140)
         self._rule = QComboBox()
         self._rule.setObjectName("prescriptionRuleSelector")
         for rule in self._workbench.list_rules():
             self._rule.addItem(rule.display_name, rule.rule_id)
-        controls.addWidget(self._rule, 2)
-        controls.addWidget(QLabel("DSP ear"))
+        self._rule.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
+        )
+        self._rule.setMinimumContentsLength(18)
         self._ear = QComboBox()
         self._ear.setObjectName("dspEarSelector")
         self._ear.addItem("Left", "left")
         self._ear.addItem("Right", "right")
-        controls.addWidget(self._ear)
+        for label_text, field, stretch in (
+            ("Prescription name", self._name, 2),
+            ("Prescription rule", self._rule, 2),
+            ("DSP ear", self._ear, 1),
+        ):
+            field_layout = QVBoxLayout()
+            field_layout.setSpacing(5)
+            label = QLabel(label_text)
+            label.setProperty("role", "fieldLabel")
+            label.setBuddy(field)
+            field.setAccessibleName(label_text)
+            field_layout.addWidget(label)
+            field_layout.addWidget(field)
+            controls.addLayout(field_layout, stretch)
         root.addLayout(controls)
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.setChildrenCollapsible(False)
+        splitter.setHandleWidth(12)
         splitter.addWidget(self._build_audiogram_card())
         splitter.addWidget(self._build_result_card())
         splitter.setSizes([420, 560])
@@ -190,6 +205,12 @@ class AudiogramFittingScreen(QWidget):
             QAbstractItemView.EditTrigger.NoEditTriggers
         )
         self._saved_table.verticalHeader().hide()
+        self._saved_table.horizontalHeader().setDefaultAlignment(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+        )
+        self._saved_table.verticalHeader().setDefaultSectionSize(34)
+        self._saved_table.setShowGrid(False)
+        self._saved_table.setMinimumHeight(90)
         self._saved_table.horizontalHeader().setSectionResizeMode(
             0, QHeaderView.ResizeMode.Stretch
         )
@@ -223,7 +244,10 @@ class AudiogramFittingScreen(QWidget):
             ["Hz", "Left", "Right"]
         )
         self._audiogram_table.verticalHeader().hide()
-        self._audiogram_table.verticalHeader().setDefaultSectionSize(24)
+        self._audiogram_table.verticalHeader().setDefaultSectionSize(28)
+        self._audiogram_table.setShowGrid(False)
+        self._audiogram_table.setAlternatingRowColors(True)
+        self._audiogram_table.setAccessibleName("Audiogram thresholds in dB HL")
         self._audiogram_table.horizontalHeader().setSectionResizeMode(
             QHeaderView.ResizeMode.Stretch
         )
@@ -235,8 +259,13 @@ class AudiogramFittingScreen(QWidget):
             self._audiogram_table.setItem(row, 0, frequency_item)
             self._audiogram_table.setItem(row, 1, QTableWidgetItem("0"))
             self._audiogram_table.setItem(row, 2, QTableWidgetItem("0"))
+            for column in range(3):
+                self._audiogram_table.item(row, column).setTextAlignment(
+                    Qt.AlignmentFlag.AlignCenter
+                )
         layout.addWidget(self._audiogram_table, 1)
-        self._generate = QPushButton("Generate target and DSP values")
+        self._generate = QPushButton("Generate prescription")
+        self._generate.setToolTip("Generate the target curves and calibrated DSP values")
         self._generate.setObjectName("generatePrescriptionButton")
         layout.addWidget(self._generate)
         return card
@@ -249,6 +278,7 @@ class AudiogramFittingScreen(QWidget):
         layout.setContentsMargins(12, 12, 12, 12)
         self._result_title = QLabel("No generated target")
         self._result_title.setObjectName("fittingCardTitle")
+        self._result_title.setWordWrap(True)
         layout.addWidget(self._result_title)
         self._result_details = QLabel(
             "The preview shows target gain at representative acoustic input levels."
@@ -262,13 +292,16 @@ class AudiogramFittingScreen(QWidget):
         self._target_table = QTableWidget(0, 7)
         self._target_table.setObjectName("prescriptionTargetTable")
         self._target_table.setHorizontalHeaderLabels(
-            ["Band Hz", "L 45", "L 65", "L 85", "R 45", "R 65", "R 85"]
+            ["Hz", "L 45", "L 65", "L 85", "R 45", "R 65", "R 85"]
         )
         self._target_table.setEditTriggers(
             QAbstractItemView.EditTrigger.NoEditTriggers
         )
         self._target_table.verticalHeader().hide()
-        self._target_table.verticalHeader().setDefaultSectionSize(24)
+        self._target_table.verticalHeader().setDefaultSectionSize(28)
+        self._target_table.setShowGrid(False)
+        self._target_table.setAlternatingRowColors(True)
+        self._target_table.setAccessibleName("Target gains in dB at 45, 65, and 85 dB SPL")
         self._target_table.horizontalHeader().setSectionResizeMode(
             QHeaderView.ResizeMode.Stretch
         )
@@ -391,18 +424,21 @@ class AudiogramFittingScreen(QWidget):
         )):
             for column, value in enumerate(values):
                 item = QTableWidgetItem(f"{value:g}")
+                item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 if column == 0:
                     item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
                 self._audiogram_table.setItem(row, column, item)
         self._result_title.setText(artifact.name)
         self._result_details.setText(
-            f"{target.rule.display_name} · "
-            f"{len(target.input_levels_db_spl)} input levels · "
-            f"{len(target.band_centres_hz)} bands × 2 ears · "
-            f"{artifact.mapping.ear} ear to DSP · "
+            f"{len(target.band_centres_hz)} bands · "
+            f"{len(target.input_levels_db_spl)} levels · "
+            f"{artifact.mapping.ear.title()} ear to DSP\n"
             f"{len(artifact.prescription.parameters)} parameters / "
             f"{artifact.prescription.payload_byte_count} bytes · SHA-256 "
-            f"{artifact.prescription.sha256}"
+            f"{artifact.prescription.sha256[:12]}…"
+        )
+        self._result_details.setToolTip(
+            f"{target.rule.display_name}\nSHA-256: {artifact.prescription.sha256}"
         )
         active_bands = min(8, len(target.band_centres_hz))
         self._target_table.setRowCount(active_bands)
@@ -417,7 +453,9 @@ class AudiogramFittingScreen(QWidget):
                 for level in (45.0, 65.0, 85.0)
             )
             for column, value in enumerate(values):
-                self._target_table.setItem(row, column, QTableWidgetItem(value))
+                item = QTableWidgetItem(value)
+                item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self._target_table.setItem(row, column, item)
         self._export_current.setEnabled(True)
 
     @Slot()
@@ -453,11 +491,19 @@ class AudiogramFittingScreen(QWidget):
         for row, artifact in enumerate(artifacts):
             name = QTableWidgetItem(artifact.name)
             name.setData(Qt.ItemDataRole.UserRole, artifact.artifact_id)
+            name.setToolTip(artifact.name)
+            try:
+                created_at = datetime.fromisoformat(artifact.created_at).astimezone()
+                created_text = created_at.strftime("%d %b %Y, %H:%M")
+            except ValueError:
+                created_text = artifact.created_at
+            created = QTableWidgetItem(created_text)
+            created.setToolTip(artifact.created_at)
             values = (
                 name,
                 QTableWidgetItem(artifact.target.rule.display_name),
                 QTableWidgetItem(artifact.mapping.ear.title()),
-                QTableWidgetItem(artifact.created_at),
+                created,
                 QTableWidgetItem(str(len(artifact.prescription.parameters))),
             )
             for column, item in enumerate(values):
@@ -500,7 +546,10 @@ class AudiogramFittingScreen(QWidget):
         answer = QMessageBox.question(
             self,
             "Delete custom prescription",
-            f"Delete \"{artifact.name}\" from this workstation?",
+            f"Delete \"{artifact.name}\" from this workstation?\n\n"
+            "The local file will be removed. Exported copies are not affected.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel,
         )
         if answer != QMessageBox.StandardButton.Yes:
             return
@@ -581,37 +630,3 @@ class AudiogramFittingScreen(QWidget):
         self._message.setProperty("error", error)
         self._message.style().unpolish(self._message)
         self._message.style().polish(self._message)
-
-
-_STYLE_SHEET = """
-#audiogramFittingScreen { background: #ffffff; color: #202123; }
-#audiogramFittingScreen QLabel { color: #202123; }
-#fittingTitle { font-size: 24px; font-weight: 600; }
-#fittingSubtitle, #resultDetails, #fittingMessage {
-    color: #6e6e73;
-    font-size: 13px;
-}
-#fittingMessage[error="true"] { color: #c5221f; }
-#fittingCard {
-    background: #ffffff;
-    border: 1px solid #dedede;
-    border-radius: 8px;
-}
-#fittingCardTitle, #savedPrescriptionTitle { font-size: 14px; font-weight: 600; }
-#audiogramTable, #prescriptionTargetTable, #savedPrescriptionTable {
-    alternate-background-color: #f7f7f8;
-    background: #ffffff;
-    border: 1px solid #dedede;
-    color: #202123;
-    font-size: 12px;
-}
-#generatePrescriptionButton, #saveGeneratedPrescriptionButton {
-    background: #2f80ed;
-    border: none;
-    border-radius: 6px;
-    color: #ffffff;
-    min-height: 32px;
-    padding: 0 15px;
-}
-#saveGeneratedPrescriptionButton:disabled { background: #a8c9f4; }
-"""
