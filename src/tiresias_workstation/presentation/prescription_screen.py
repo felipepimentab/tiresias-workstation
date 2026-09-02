@@ -69,7 +69,6 @@ class PrescriptionScreen(QWidget):
     def _build_ui(self, prescriptions: tuple[Prescription, ...]) -> None:
         """Construct the catalog, selected-profile details, and progress view."""
         self.setObjectName("prescriptionScreen")
-        self.setStyleSheet(_STYLE_SHEET)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(36, 32, 36, 30)
         layout.setSpacing(14)
@@ -111,11 +110,16 @@ class PrescriptionScreen(QWidget):
             QAbstractItemView.EditTrigger.NoEditTriggers
         )
         self._table.setAlternatingRowColors(True)
+        self._table.setWordWrap(False)
         self._table.setShowGrid(False)
         self._table.verticalHeader().hide()
         self._table.verticalHeader().setDefaultSectionSize(42)
         header = self._table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        header.setDefaultAlignment(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+        )
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
+        self._table.setColumnWidth(0, 190)
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
@@ -130,6 +134,7 @@ class PrescriptionScreen(QWidget):
         action_row = QHBoxLayout()
         self._selected_title = QLabel("Select a prescription")
         self._selected_title.setObjectName("selectedPrescriptionTitle")
+        self._selected_title.setWordWrap(True)
         action_row.addWidget(self._selected_title, 1)
         self._load_button = QPushButton("Load into board")
         self._load_button.setObjectName("loadPrescriptionButton")
@@ -148,6 +153,7 @@ class PrescriptionScreen(QWidget):
         self._progress.setObjectName("prescriptionProgress")
         self._progress.setRange(0, 1)
         self._progress.setValue(0)
+        self._progress.setTextVisible(False)
         progress_row.addWidget(self._progress, 1)
         self._progress_count = QLabel("0 / 0 parameters")
         self._progress_count.setObjectName("prescriptionProgressCount")
@@ -182,10 +188,13 @@ class PrescriptionScreen(QWidget):
         self._table.setRowCount(len(prescriptions))
         for row, prescription in enumerate(prescriptions):
             profile = QTableWidgetItem(prescription.display_name)
+            profile.setToolTip(prescription.display_name)
             profile.setData(Qt.ItemDataRole.UserRole, prescription.profile_id)
+            description = QTableWidgetItem(prescription.description)
+            description.setToolTip(prescription.description)
             values = (
                 profile,
-                QTableWidgetItem(prescription.description),
+                description,
                 QTableWidgetItem(str(len(prescription.parameters))),
                 QTableWidgetItem(f"{prescription.payload_byte_count} bytes"),
             )
@@ -368,53 +377,3 @@ class PrescriptionScreen(QWidget):
         self._message.setProperty("error", error)
         self._message.style().unpolish(self._message)
         self._message.style().polish(self._message)
-
-
-_STYLE_SHEET = """
-#prescriptionScreen {
-    background: #ffffff;
-    color: #202123;
-}
-#prescriptionScreen QLabel { color: #202123; }
-#prescriptionTitle { font-size: 24px; font-weight: 600; }
-#prescriptionSubtitle, #selectedPrescriptionDetails,
-#prescriptionProgressCount, #prescriptionMessage {
-    color: #6e6e73;
-    font-size: 13px;
-}
-#prescriptionMessage[error="true"] { color: #c5221f; }
-#prescriptionConnectionBadge {
-    background: #f1f1f3;
-    border-radius: 10px;
-    color: #55555a;
-    font-size: 11px;
-    min-width: 110px;
-    padding: 4px 9px;
-}
-#prescriptionTable {
-    alternate-background-color: #f7f7f8;
-    background: #ffffff;
-    border: 1px solid #dedede;
-    color: #202123;
-    font-size: 12px;
-}
-#prescriptionTable QHeaderView::section {
-    background: #f1f1f3;
-    color: #363638;
-}
-#selectedPrescriptionCard {
-    background: #ffffff;
-    border: 1px solid #dedede;
-    border-radius: 8px;
-}
-#selectedPrescriptionTitle { font-size: 14px; font-weight: 600; }
-#loadPrescriptionButton {
-    background: #2f80ed;
-    border: none;
-    border-radius: 6px;
-    color: #ffffff;
-    min-height: 32px;
-    padding: 0 15px;
-}
-#loadPrescriptionButton:disabled { background: #a8c9f4; }
-"""
