@@ -5,6 +5,7 @@ import sys
 from PySide6.QtWidgets import QApplication
 
 from tiresias_workstation.presentation.main_window import MainWindow
+from tiresias_workstation.presentation.theme import apply_light_theme
 
 
 def main() -> int:
@@ -15,6 +16,7 @@ def main() -> int:
     """
     app = QApplication(sys.argv)
     app.setApplicationName("Tiresias Workstation")
+    apply_light_theme(app)
 
     window = MainWindow()
     window.show()

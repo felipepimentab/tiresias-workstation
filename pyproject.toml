@@ -10,6 +10,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "bleak>=1.0,<4",
+    "pyclarity @ git+https://github.com/claritychallenge/clarity.git@9df6486fb0bddc7619b3b99f1b3a5c72c109a3ec",
     "PySide6>=6.8,<7",
 ]
 
@@ -19,3 +20,14 @@ tiresias-workstation = "tiresias_workstation.main:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+# pyClarity declares its complete challenge/ML stack, while this application
+# imports only the CEC1 CAMFIT path. This matches tiresias-eval's validated
+# minimal installation and prevents unrelated Torch dependencies from becoming
+# part of the desktop application.
+[[tool.uv.dependency-metadata]]
+name = "pyclarity"
+version = "0.9.0.post2"
+requires-dist = [
+    "numpy==2.4.6",
+    "scipy==1.17.1",
+]

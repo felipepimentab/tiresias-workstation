@@ -38,10 +38,11 @@
 
 ## Post-MVP
 
-1. Flexible DSP parameter inspection and editing
-2. Audiogram input and validation
-3. pyClarity/CAMEQ prescription generation
-4. Automatic SigmaStudio parameter-table generation
-5. Pluggable prescription engines, including a custom NAL-NL2 adapter
-6. Comparison and characterization tools for prescriptions and board responses
-
+1. Generate the shared DSP contract from the SigmaStudio `.params` export
+2. Optionally negotiate a device-provided dynamic catalog if product direction requires it
+3. Flexible DSP parameter inspection and editing
+4. ✓ Audiogram input and validation
+5. ✓ pyClarity CAMFIT prescription generation
+6. ✓ Automatic calibrated SigmaStudio parameter-table generation
+7. Pluggable prescription engines, including a custom NAL-NL2 adapter
+8. Comparison and characterization tools for prescriptions and board responses

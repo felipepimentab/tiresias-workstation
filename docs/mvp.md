@@ -2,19 +2,20 @@
 
 ## Goal
 
-Enable repeatable testing of the Tiresias DK by applying ten existing DSP
-parameter tables over BLE.
+Validate the end-to-end architecture by discovering a Tiresias DK, inspecting
+its custom service, and remotely reading fixed DSP parameters and persistently
+changing supported opaque parameter byte arrays.
 
 ## Required workflow
 
 1. The user opens the application and scans for a Tiresias DK.
 2. The user connects to a discovered board.
 3. The application reads and displays available device information.
-4. The user selects one of the ten standard profiles: N1–N7 or S1–S3.
-5. The application writes the corresponding parameter table through the custom
-   BLE service.
-6. The application reports whether the transfer completed or failed.
-7. The user can select another profile and repeat the transfer.
+4. The application validates the shared fixed contract and displays its blocks and parameters.
+5. The user reads a parameter by stable ID and supplies a complete byte array where writable.
+6. The application reports success only after firmware confirms flash commit.
+7. The user selects a bundled prescription and loads its complete parameter set.
+8. The user can repeat reads, writes, and prescription loads without reconnecting.
 
 ## Included
 
@@ -22,24 +23,30 @@ parameter tables over BLE.
 - Connection-state indication
 - Custom-service reads and writes
 - Basic device-information view
-- Fixed catalog of ten precomputed parameter tables
-- Profile selection and application
-- Transfer progress and error reporting
+- Shared fixed contract with ID, version, count, and CRC validation
+- Stable-ID, byte-offset reads and persistent opaque-byte writes
+- N1–N7/S1–S3 catalog selection and whole-profile persistence
+- Format and device-contract preflight before prescription transfer
+- Offline two-ear audiogram entry and pyClarity CAMFIT target generation
+- Separate calibrated target-to-DSP mapping with per-stage JSON inspection
+- Named local prescription saving, listing, export, and deletion
+- Correlated progress and actionable terminal error reporting
 - Diagnostic logging useful during board characterization
 
 ## Excluded
 
-- Audiogram entry or import
-- CAMEQ or pyClarity integration
+- Audiogram file import
 - NAL-NL2 integration
-- Arbitrary DSP parameter editing
-- Generation of SigmaStudio parameter tables
+- Raw-address DSP access
+- Atomic multi-chunk LUT writes
 - Firmware update support
 - Clinical fitting or patient-data management
 
 ## Acceptance criteria
 
-The MVP is complete when a user can connect to a supported board, identify it,
-and repeatedly cycle through all ten bundled tables without restarting the
-application. Each transfer must have an unambiguous success or failure result.
-
+This architecture-validation MVP is complete when a user can connect to a
+supported board, validate the protocol and contract fingerprint, read every exposed
+parameter, persist every writable byte array, and load every bundled prescription
+without restarting either side. Each byte-chunk operation must have an
+unambiguous correlated result, and each write must have a firmware-confirmed
+revision.

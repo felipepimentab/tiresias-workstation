@@ -23,12 +23,15 @@ class DiscoveredDevice:
             generally indicate a stronger signal.
         service_uuids: Normalized, lowercase service UUIDs included in the
             advertisement.
+        is_tiresias: Whether the custom Tiresias service was advertised. This
+            identity does not depend on the mutable local device name.
     """
 
     address: str
     name: str | None
     rssi: int
     service_uuids: tuple[str, ...] = ()
+    is_tiresias: bool = False
 
 
 class DeviceTransport(Protocol):
@@ -83,4 +86,53 @@ class DeviceTransport(Protocol):
 
         The method is idempotent: calling it without an active client has no
         effect.
+        """
+
+    async def read_characteristic(self, characteristic_uuid: str) -> bytes:
+        """Read a GATT characteristic from the active connection.
+
+        Args:
+            characteristic_uuid: Canonical 128-bit characteristic UUID.
+
+        Returns:
+            Characteristic value copied into immutable bytes.
+
+        Raises:
+            ConnectionError: If no device is connected.
+            Exception: If the platform Bluetooth backend rejects the read.
+        """
+
+    async def write_characteristic(
+        self,
+        characteristic_uuid: str,
+        value: bytes,
+        *,
+        response: bool,
+    ) -> None:
+        """Write a GATT characteristic on the active connection.
+
+        Args:
+            characteristic_uuid: Canonical 128-bit characteristic UUID.
+            value: Complete characteristic payload.
+            response: Whether ATT write-with-response is required.
+        """
+
+    async def start_notifications(
+        self,
+        characteristic_uuid: str,
+        callback: Callable[[bytes], None],
+    ) -> None:
+        """Subscribe to notifications or indications for a characteristic.
+
+        Args:
+            characteristic_uuid: Canonical 128-bit characteristic UUID.
+            callback: Callback invoked on the owning asyncio thread for every
+                received value.
+        """
+
+    async def stop_notifications(self, characteristic_uuid: str) -> None:
+        """Remove an active characteristic subscription if connected.
+
+        Args:
+            characteristic_uuid: Canonical 128-bit characteristic UUID.
         """

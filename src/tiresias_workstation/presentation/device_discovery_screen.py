@@ -56,7 +56,6 @@ class DeviceDiscoveryScreen(QWidget):
     def _build_ui(self) -> None:
         """Construct and style the screen's static widget hierarchy."""
         self.setObjectName("deviceDiscoveryScreen")
-        self.setStyleSheet(_STYLE_SHEET)
 
         page_layout = QVBoxLayout(self)
         page_layout.setContentsMargins(36, 32, 36, 30)
@@ -66,12 +65,12 @@ class DeviceDiscoveryScreen(QWidget):
         heading_copy = QVBoxLayout()
         heading_copy.setSpacing(3)
 
-        title = QLabel("Bluetooth devices")
+        title = QLabel("Devices")
         title.setObjectName("pageTitle")
         heading_copy.addWidget(title)
 
         subtitle = QLabel(
-            "Find nearby BLE advertisers, then select one to attempt a connection."
+            "Find and connect to a nearby Tiresias board over Bluetooth."
         )
         subtitle.setObjectName("pageSubtitle")
         subtitle.setWordWrap(True)
@@ -113,10 +112,10 @@ class DeviceDiscoveryScreen(QWidget):
         card_layout.setContentsMargins(1, 1, 1, 1)
         card_layout.setSpacing(0)
 
-        self._device_table = QTableWidget(0, 4)
+        self._device_table = QTableWidget(0, 5)
         self._device_table.setObjectName("deviceTable")
         self._device_table.setHorizontalHeaderLabels(
-            ["Device", "Identifier", "Signal", "Advertised services"]
+            ["Device", "Identifier", "Signal", "Tiresias", "Advertised services"]
         )
         self._device_table.setSelectionBehavior(
             QAbstractItemView.SelectionBehavior.SelectRows
@@ -133,7 +132,8 @@ class DeviceDiscoveryScreen(QWidget):
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
         card_layout.addWidget(self._device_table)
         page_layout.addWidget(device_card, 1)
 
@@ -154,6 +154,7 @@ class DeviceDiscoveryScreen(QWidget):
         self._selection_detail.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse
         )
+        self._selection_detail.setWordWrap(True)
         selection_copy.addWidget(self._selection_detail)
         action_layout.addLayout(selection_copy, 1)
 
@@ -212,6 +213,13 @@ class DeviceDiscoveryScreen(QWidget):
         """Request a connection to the currently selected table row."""
         address = self._selected_address()
         if address is None:
+            return
+        device = self._devices.get(address)
+        if device is None or not device.is_tiresias:
+            self._show_message(
+                "The selected advertisement does not include the Tiresias service.",
+                True,
+            )
             return
         if not self._controller.connect(address):
             self._show_message(
@@ -382,7 +390,8 @@ class DeviceDiscoveryScreen(QWidget):
             self._selection_detail.setText("Select a row to connect")
         else:
             self._selection_detail.setText(
-                f"{self._display_name(device)}  ·  {device.address}"
+                f"{self._display_name(device)}  ·  {device.address}  ·  "
+                f"{'Supported' if device.is_tiresias else 'Not a Tiresias device'}"
             )
         self._update_controls()
 
@@ -400,6 +409,9 @@ class DeviceDiscoveryScreen(QWidget):
 
         address_item = QTableWidgetItem(device.address)
         signal_item = QTableWidgetItem(self._format_signal(device.rssi))
+        identity_item = QTableWidgetItem("Supported" if device.is_tiresias else "—")
+        if device.is_tiresias:
+            identity_item.setForeground(QColor("#16803a"))
 
         services = [self._short_uuid(uuid) for uuid in device.service_uuids]
         if services:
@@ -412,7 +424,7 @@ class DeviceDiscoveryScreen(QWidget):
         services_item.setToolTip("\n".join(device.service_uuids))
 
         for column, item in enumerate(
-            (name_item, address_item, signal_item, services_item)
+            (name_item, address_item, signal_item, identity_item, services_item)
         ):
             self._device_table.setItem(row, column, item)
 
@@ -445,11 +457,15 @@ class DeviceDiscoveryScreen(QWidget):
     def _update_controls(self) -> None:
         """Derive button and table availability from current screen state."""
         has_selection = self._selected_address() is not None
+        selected = self._devices.get(self._selected_address() or "")
+        supported_selection = selected is not None and selected.is_tiresias
         is_connected = self._connected_address is not None
         self._scan_button.setEnabled(not self._busy and not is_connected)
         self._device_table.setEnabled(not self._busy and not is_connected)
         self._connect_button.setVisible(not is_connected)
-        self._connect_button.setEnabled(has_selection and not self._busy)
+        self._connect_button.setEnabled(
+            has_selection and supported_selection and not self._busy
+        )
         self._disconnect_button.setVisible(is_connected)
         self._disconnect_button.setEnabled(is_connected and not self._busy)
 
@@ -507,120 +523,3 @@ class DeviceDiscoveryScreen(QWidget):
         if uuid.startswith("0000") and uuid.endswith(suffix):
             return uuid[4:8].upper()
         return uuid
-
-
-_STYLE_SHEET = """
-#deviceDiscoveryScreen {
-    background: #ffffff;
-    color: #202123;
-    font-family: "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
-}
-#pageTitle {
-    color: #202123;
-    font-size: 24px;
-    font-weight: 600;
-}
-#pageSubtitle, #resultSummary, #messageLabel {
-    color: #6e6e73;
-    font-size: 13px;
-}
-#messageLabel[error="true"] {
-    color: #c5221f;
-}
-#statusBadge {
-    background: transparent;
-    border: none;
-    font-size: 12px;
-    font-weight: 500;
-    padding: 6px 4px;
-}
-#statusBadge[connectionState="idle"] {
-    color: #8e8e93;
-}
-#statusBadge[connectionState="working"] {
-    color: #b26800;
-}
-#statusBadge[connectionState="connected"] {
-    color: #16803a;
-}
-#deviceCard, #actionCard {
-    background: #ffffff;
-    border: 1px solid #dedede;
-    border-radius: 8px;
-}
-#deviceTable {
-    background: transparent;
-    alternate-background-color: #fbfbfb;
-    border: none;
-    border-radius: 8px;
-    color: #2c2c2e;
-    font-size: 12px;
-    selection-background-color: #eeeeef;
-    selection-color: #171717;
-}
-#deviceTable::item {
-    border: none;
-    padding: 7px 10px;
-}
-#deviceTable QHeaderView::section {
-    background: #fafafa;
-    border: none;
-    border-bottom: 1px solid #e3e3e3;
-    color: #6e6e73;
-    font-size: 11px;
-    font-weight: 500;
-    padding: 9px 10px;
-}
-#selectionLabel {
-    color: #8e8e93;
-    font-size: 11px;
-    font-weight: 500;
-}
-#selectionDetail {
-    color: #2c2c2e;
-    font-size: 13px;
-    font-weight: 500;
-}
-QPushButton {
-    border-radius: 6px;
-    font-size: 13px;
-    font-weight: 500;
-    min-height: 32px;
-    padding: 0 14px;
-}
-#scanButton, #connectButton {
-    background: #202123;
-    border: 1px solid #202123;
-    color: #ffffff;
-}
-#scanButton:hover, #connectButton:hover {
-    background: #343437;
-    border-color: #343437;
-}
-#scanButton:pressed, #connectButton:pressed {
-    background: #111111;
-}
-#disconnectButton {
-    background: #f7f7f7;
-    border: 1px solid #d5d5d5;
-    color: #2c2c2e;
-}
-#disconnectButton:hover {
-    background: #ededed;
-}
-QPushButton:disabled {
-    background: #f1f1f1;
-    border-color: #e5e5e5;
-    color: #a2a2a6;
-}
-#scanProgress {
-    background: #e7e7e7;
-    border: none;
-    border-radius: 2px;
-    max-height: 4px;
-}
-#scanProgress::chunk {
-    background: #6e6e73;
-    border-radius: 2px;
-}
-"""

@@ -12,10 +12,10 @@ Application use cases
       |
 Domain interfaces
       |
-+----------------------+----------------------+-------------------+
-| Tiresias BLE adapter | Prescription catalog | Fitting engines   |
-| Bleak + board GATT    | Bundled byte tables  | Future adapters   |
-+----------------------+----------------------+-------------------+
++----------------------+-----------------------+----------------------------+
+| Tiresias BLE adapter | Prescription catalogs | Fitting + mapping adapters |
+| Bleak + board GATT    | Bundled + local JSON  | pyClarity + SigmaDSP        |
++----------------------+-----------------------+----------------------------+
 ```
 
 ## Modules
@@ -29,7 +29,9 @@ packets or generate DSP parameters.
 ### Application
 
 Coordinates complete operations such as scan, connect, read device information,
-and apply a prescription. It owns progress, cancellation, and error reporting.
+and apply a prescription. `PrescriptionLoader` preflights the complete format
+and connected-device contract before serializing parameter writes. The Qt
+controller owns scheduling and publishes progress, completion, and errors.
 
 ### Domain
 
@@ -40,24 +42,38 @@ Bleak, pyClarity, or a particular board protocol.
 ### Adapters
 
 - **Bleak transport:** scanning, connections, GATT reads/writes, and notifications.
-- **Tiresias protocol:** UUIDs, commands, packet framing, checksums, acknowledgments,
-  and retries.
-- **Bundled catalog:** loads and validates the ten MVP parameter tables.
-- **Future fitting engines:** adapt pyClarity/CAMEQ, NAL-NL2, or other rules to a
-  common prescription interface.
+- **Tiresias protocol:** UUIDs, fixed record decoding, contract compatibility,
+  transaction correlation, and firmware result translation.
+- **DSP contract:** fixed block and parameter names, IDs, word counts, and flags.
+- **Prescription catalogs:** validate the ten immutable MVP tables and locally
+  generated JSON artifacts behind one catalog interface.
+- **Fitting rules:** adapt pyClarity CAMFIT or future rules such as NAL-NL2 to
+  a common, hardware-independent `PrescriptionTarget`.
+- **DSP mapping:** converts a selected target ear through a versioned detector
+  calibration into the fixed SigmaDSP parameter contract.
 
 ## Main extension points
 
-- `DeviceClient`: operations supported by a Tiresias DK.
+- `TiresiasClient`: ready-session and stable-ID parameter operations.
 - `PrescriptionCatalog`: available named, precomputed parameter tables.
-- `PrescriptionEngine`: generates a parameter table from fitting inputs.
+- `PrescriptionLoader`: applies any validated prescription independently of its
+  catalog or generation source.
+- `PrescriptionRule`: generates a full two-ear target from an audiogram.
+- `DspPrescriptionMapper`: converts a target to board-specific parameter values.
+- `GeneratedPrescriptionStore`: persists every inspectable generation stage.
 
-The UI applies a parameter table without knowing whether it came from a bundled
-asset, pyClarity, or another prescription engine.
+The UI applies a `Prescription` without knowing whether it came from a bundled
+asset, pyClarity, or another prescription engine. The same loader therefore
+supports generated custom prescriptions that use the supported format and fixed
+parameter contract.
+
+For the architecture-validation MVP, `BleakDeviceTransport` owns generic BLE
+and GATT mechanics while `TiresiasProtocolClient` owns the board protocol. The
+Qt controller serializes use cases on its worker loop; screens receive only
+domain snapshots and terminal results.
 
 ## Dependency rule
 
 Dependencies point inward: adapters depend on domain interfaces, never the
 reverse. This keeps BLE hardware and external libraries replaceable in tests
 and future releases.
-
