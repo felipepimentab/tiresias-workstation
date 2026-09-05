@@ -23,6 +23,7 @@ from tiresias_workstation.application.prescription_workbench import (
     PrescriptionWorkbench,
 )
 from tiresias_workstation.domain.prescriptions import PrescriptionCatalog
+from tiresias_workstation.domain.tiresias import DeviceSession
 from tiresias_workstation.presentation.audiogram_fitting_screen import (
     AudiogramFittingScreen,
 )
@@ -55,6 +56,9 @@ class MainWindow(QMainWindow):
         super().__init__()
 
         self._controller = controller or BleController()
+        self._connected_address: str | None = None
+        self._connected_device_details = ""
+        self._session_connected = False
         storage_directory = Path(
             QStandardPaths.writableLocation(
                 QStandardPaths.StandardLocation.AppDataLocation
@@ -89,6 +93,10 @@ class MainWindow(QMainWindow):
             self.prescription_screen.refresh_catalog
         )
         self.setCentralWidget(self._build_application_shell())
+        self._controller.connection_started.connect(self._connection_started)
+        self._controller.connection_succeeded.connect(self._connection_succeeded)
+        self._controller.connection_failed.connect(self._connection_failed)
+        self._controller.disconnection_started.connect(self._disconnection_started)
         self._controller.session_loaded.connect(self._session_available)
         self._controller.disconnected.connect(self._session_lost)
 
@@ -96,7 +104,8 @@ class MainWindow(QMainWindow):
         """Build the persistent navigation shell around the active page.
 
         Returns:
-            Root widget containing the sidebar and discovery screen.
+            Root widget containing persistent navigation, connection header,
+            and active screen.
         """
         shell = QWidget()
         shell.setObjectName("applicationShell")
@@ -149,12 +158,21 @@ class MainWindow(QMainWindow):
         sidebar_layout.addWidget(boundary)
 
         shell_layout.addWidget(sidebar)
+
+        content = QWidget()
+        content.setObjectName("mainContent")
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(0)
+        content_layout.addWidget(self._build_connection_header())
+
         self._content_stack = QStackedWidget()
         self._content_stack.addWidget(self.device_discovery_screen)
         self._content_stack.addWidget(self.device_control_screen)
         self._content_stack.addWidget(self.prescription_screen)
         self._content_stack.addWidget(self.audiogram_fitting_screen)
-        shell_layout.addWidget(self._content_stack, 1)
+        content_layout.addWidget(self._content_stack, 1)
+        shell_layout.addWidget(content, 1)
 
         self._devices_button.clicked.connect(self._show_devices)
         self._board_button.clicked.connect(self._show_board)
@@ -162,6 +180,51 @@ class MainWindow(QMainWindow):
         self._prescriptions_button.clicked.connect(self._show_prescriptions)
         self._fitting_button.clicked.connect(self._show_fitting)
         return shell
+
+    def _build_connection_header(self) -> QFrame:
+        """Build the status banner that remains visible on every screen."""
+        header = QFrame()
+        header.setObjectName("connectionHeader")
+        header.setMinimumHeight(70)
+        layout = QHBoxLayout(header)
+        layout.setContentsMargins(24, 11, 24, 11)
+        layout.setSpacing(14)
+
+        copy = QVBoxLayout()
+        copy.setSpacing(2)
+        label = QLabel("DEVICE CONNECTION")
+        label.setObjectName("connectionHeaderLabel")
+        copy.addWidget(label)
+        self._connection_details = QLabel("No Tiresias board connected")
+        self._connection_details.setObjectName("connectionHeaderDetails")
+        self._connection_details.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        copy.addWidget(self._connection_details)
+        layout.addLayout(copy, 1)
+
+        self._connection_badge = QLabel("Not connected")
+        self._connection_badge.setObjectName("connectionHeaderBadge")
+        self._connection_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._connection_badge.setProperty("connectionState", "idle")
+        layout.addWidget(self._connection_badge)
+        return header
+
+    def _set_connection_header(
+        self, status: str, details: str, state: str
+    ) -> None:
+        """Update persistent connection copy and its semantic visual state.
+
+        Args:
+            status: Short connection lifecycle label.
+            details: Device identity or actionable status context.
+            state: Stylesheet state name such as ``connected`` or ``working``.
+        """
+        self._connection_badge.setText(status)
+        self._connection_badge.setProperty("connectionState", state)
+        self._connection_badge.style().unpolish(self._connection_badge)
+        self._connection_badge.style().polish(self._connection_badge)
+        self._connection_details.setText(details)
 
     @staticmethod
     def _navigation_row(
@@ -221,9 +284,57 @@ class MainWindow(QMainWindow):
         self.audiogram_fitting_screen.refresh_saved()
         self._select_navigation(self._fitting_button)
 
+    @Slot(str)
+    def _connection_started(self, address: str) -> None:
+        """Show an in-progress connection in the persistent header."""
+        self._connected_address = address
+        self._set_connection_header("Connecting…", address, "working")
+
+    @Slot(str)
+    def _connection_succeeded(self, address: str) -> None:
+        """Show a validated connection while identity details arrive."""
+        self._connected_address = address
+        self._session_connected = True
+        self._connected_device_details = address
+        self._set_connection_header("Connected", address, "connected")
+
+    @Slot(str, str)
+    def _connection_failed(self, address: str, message: str) -> None:
+        """Show a connection failure without enabling session pages."""
+        if self._session_connected:
+            self._set_connection_header(
+                "Connected",
+                self._connected_device_details or address,
+                "connected",
+            )
+            return
+        self._connected_address = None
+        self._set_connection_header(
+            "Connection failed", f"{address} · {message}", "error"
+        )
+
+    @Slot(str)
+    def _disconnection_started(self, address: str) -> None:
+        """Show an explicit disconnection while it is in progress."""
+        self._set_connection_header("Disconnecting…", address, "working")
+
     @Slot(object)
-    def _session_available(self, _session: object) -> None:
-        """Enable connected-device pages after protocol validation."""
+    def _session_available(self, payload: object) -> None:
+        """Enable connected-device pages and publish available identity."""
+        if isinstance(payload, DeviceSession):
+            self._session_connected = True
+            info = payload.information
+            details = [info.model_number or "Tiresias device"]
+            if info.serial_number:
+                details.append(f"Serial {info.serial_number}")
+            if info.firmware_revision:
+                details.append(f"Firmware {info.firmware_revision}")
+            if self._connected_address:
+                details.append(self._connected_address)
+            self._connected_device_details = " · ".join(details)
+            self._set_connection_header(
+                "Connected", self._connected_device_details, "connected"
+            )
         self._board_button.setEnabled(True)
         self._parameters_button.setEnabled(True)
         self._prescriptions_button.setEnabled(True)
@@ -232,6 +343,12 @@ class MainWindow(QMainWindow):
     @Slot(str)
     def _session_lost(self, _address: str) -> None:
         """Return to Devices and disable session-scoped navigation."""
+        self._connected_address = None
+        self._connected_device_details = ""
+        self._session_connected = False
+        self._set_connection_header(
+            "Not connected", "No Tiresias board connected", "idle"
+        )
         self._board_button.setEnabled(False)
         self._parameters_button.setEnabled(False)
         self._prescriptions_button.setEnabled(False)
