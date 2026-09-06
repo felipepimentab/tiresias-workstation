@@ -10,6 +10,7 @@ with the Tiresias DK over Bluetooth Low Energy (BLE).
 - [Architecture](architecture.md)
 - [Interface design and visual checks](ui-design.md)
 - [Prescriptions and parameter tables](prescriptions.md)
+- [Prescription data objects and units](prescription-data-model.md)
 - [Audiogram fitting and local prescriptions](audiogram-fitting.md)
 - [BLE protocol definition](ble-protocol.md)
 - [Roadmap](roadmap.md)

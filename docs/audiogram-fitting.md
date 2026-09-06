@@ -1,5 +1,8 @@
 # Audiogram fitting and local prescriptions
 
+For the meaning, units, creation, and dependencies of each data object, see
+[Prescription data objects and units](prescription-data-model.md).
+
 ## End-to-end flow
 
 The Audiogram fitting page implements the same CAMFIT prescription path used
