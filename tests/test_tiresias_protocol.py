@@ -1,5 +1,6 @@
 """Exercise the fixed Tiresias packet contract without Bluetooth hardware."""
 
+import asyncio
 import struct
 import unittest
 
@@ -13,6 +14,7 @@ from tiresias_workstation.adapters.tiresias_protocol import (
     TIRESIAS_SERVICE_UUID,
     TiresiasProtocolClient,
     decode_protocol_information,
+    decode_response,
 )
 from tiresias_workstation.domain.devices import DiscoveredDevice
 from tiresias_workstation.domain.dsp_contract import (
@@ -33,12 +35,12 @@ class FakeGattTransport:
             FIRMWARE_REVISION_UUID: b"0.1.0",
             PROTOCOL_INFO_UUID: struct.pack(
                 "<BBHIHHIII",
-                4,
+                5,
                 0,
                 24,
                 15,
-                12,
-                16,
+                188,
+                192,
                 DSP_PARAMETER_CONTRACT_CRC32,
                 42,
                 3,
@@ -48,7 +50,8 @@ class FakeGattTransport:
         self.callback = None
         self.result = 0
         self.emit_response = True
-        self.advance_write_revision = False
+        self.write_delay = 0
+        self.response_override = None
         self.last_write = None
         self.writes: list[bytes] = []
         self.reads: list[str] = []
@@ -75,34 +78,25 @@ class FakeGattTransport:
     async def write_characteristic(self, characteristic_uuid, value, *, response):
         self.last_write = (characteristic_uuid, value, response)
         self.writes.append(value)
-        (
-            opcode,
-            _flags,
-            transaction_id,
-            parameter_id,
-            byte_offset,
-            request_data,
-        ) = struct.unpack("<BBIBB4s", value)
-        response_data = (
-            bytes((byte_offset + index) & 0xFF for index in range(4))
-            if opcode == 1
-            else request_data
-        )
-        revision = (
-            4 + byte_offset // 4
-            if opcode == 2 and self.advance_write_revision
-            else 4
-        )
+        await asyncio.sleep(self.write_delay)
+        opcode, _flags, transaction_id, parameter_id, length = struct.unpack_from("<BBIBB", value)
+        request_data = value[8:]
+        if len(request_data) != length:
+            raise AssertionError("Invalid request payload length")
+        byte_count = DSP_PARAMETERS[parameter_id - 1].byte_count
+        if opcode == 2 and length != byte_count:
+            raise AssertionError("SET must contain the complete parameter")
+        if opcode == 1 and length != 0:
+            raise AssertionError("GET must not contain data")
+        response_data = bytes(range(byte_count)) if opcode == 1 else request_data
+        if self.result:
+            response_data = b""
         payload = struct.pack(
-            "<BBIBB4sI",
-            opcode,
-            self.result,
-            transaction_id,
-            parameter_id,
-            byte_offset,
-            response_data,
-            revision,
-        )
+            "<BBIBBI", opcode, self.result, transaction_id,
+            parameter_id, len(response_data), 4,
+        ) + response_data
+        if self.response_override is not None:
+            payload = self.response_override(payload)
         if self.emit_response:
             self.callback(payload)
 
@@ -155,15 +149,16 @@ class TiresiasProtocolClientTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(devices[0].is_tiresias)
         self.assertTrue(updates[0].is_tiresias)
 
-    async def test_reads_every_byte_chunk_of_a_lut_by_offset(self):
-        """Assemble one opaque byte array from correlated chunk responses."""
+    async def test_reads_complete_lut_in_one_response(self):
+        """Read a coherent full LUT using one request and one indication."""
         reading = await self.client.read_parameter(3)
 
-        requests = [struct.unpack("<BBIBB4s", payload) for payload in self.transport.writes]
+        requests = [struct.unpack("<BBIBB", payload) for payload in self.transport.writes]
         self.assertEqual(len(reading.data), 136)
         self.assertEqual(reading.data[:4], b"\x00\x01\x02\x03")
         self.assertEqual(reading.data[-4:], b"\x84\x85\x86\x87")
-        self.assertEqual([request[4] for request in requests], list(range(0, 136, 4)))
+        self.assertEqual(len(requests), 1)
+        self.assertEqual(requests[0][4], 0)
         self.assertTrue(all(request[3] == 3 for request in requests))
         self.assertIsNone(self.transport.callback)
 
@@ -179,19 +174,20 @@ class TiresiasProtocolClientTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(uuid, REQUEST_UUID)
         self.assertTrue(with_response)
         self.assertEqual(
-            struct.unpack("<BBIBB4s", payload)[3:],
-            (11, 0, b"\x01\x00\x00\x00"),
+            struct.unpack_from("<BBIBB", payload)[3:],
+            (11, 4),
         )
 
-    async def test_accepts_revision_advances_during_multi_chunk_write(self):
-        """Return the final revision when firmware commits each LUT chunk."""
-        self.transport.advance_write_revision = True
+    async def test_writes_complete_lut_in_one_operation(self):
+        """Send all 136 bytes together and receive one committed revision."""
         data = bytes(range(136))
 
         written = await self.client.write_parameter(3, data)
 
         self.assertEqual(written.data, data)
-        self.assertEqual(written.parameter_revision, 37)
+        self.assertEqual(written.parameter_revision, 4)
+        self.assertEqual(len(self.transport.writes), 1)
+        self.assertEqual(self.transport.writes[0][8:], data)
 
     async def test_surfaces_device_rejection(self):
         """Translate a terminal firmware result into an actionable error."""
@@ -206,6 +202,62 @@ class TiresiasProtocolClientTest(unittest.IsolatedAsyncioTestCase):
 
         with self.assertRaisesRegex(TimeoutError, "parameter result"):
             await self.client.write_parameter(11, b"\x01\x00\x00\x00")
+
+    async def test_rejects_partial_lut_before_writing(self):
+        """Never send a prefix of a parameter as a SET."""
+        with self.assertRaises(ValueError):
+            await self.client.write_parameter(3, bytes(132))
+        self.assertEqual(self.transport.writes, [])
+
+    async def test_reads_largest_parameter(self):
+        """Accept the complete 180-byte read-only soft-clip table."""
+        reading = await self.client.read_parameter(15)
+        self.assertEqual(reading.data, bytes(range(180)))
+        self.assertEqual(len(self.transport.writes), 1)
+
+    async def test_rejects_truncated_response(self):
+        """Do not treat a missing tail as successful completion."""
+        self.transport.response_override = lambda payload: payload[:-1]
+        with self.assertRaises(ProtocolError):
+            await self.client.read_parameter(3)
+
+    async def test_rejects_short_success_even_with_matching_length(self):
+        """Check the contract size as well as the frame's declared size."""
+        self.transport.response_override = lambda payload: payload[:7] + bytes([4]) + payload[8:16]
+        with self.assertRaisesRegex(ProtocolError, "complete parameter"):
+            await self.client.read_parameter(3)
+
+    async def test_rejects_wrong_set_echo(self):
+        """Require confirmation of the requested complete value."""
+        self.transport.response_override = lambda payload: payload[:-1] + bytes([255])
+        with self.assertRaisesRegex(ProtocolError, "differs"):
+            await self.client.write_parameter(3, bytes(136))
+
+    async def test_timeout_also_bounds_att_write(self):
+        """A blocked transport write must release the operation slot."""
+        self.transport.write_delay = 1
+        with self.assertRaisesRegex(TimeoutError, "may have committed"):
+            await self.client.write_parameter(3, bytes(136))
+        self.assertIsNone(self.transport.callback)
+        self.transport.write_delay = 0
+        await self.client.read_parameter(3)
+
+    async def test_wrong_transaction_cannot_complete_write(self):
+        """A stale response must leave the operation waiting for its own result."""
+        self.transport.response_override = lambda payload: payload[:2] + struct.pack("<I", 99) + payload[6:]
+        with self.assertRaises(TimeoutError):
+            await self.client.write_parameter(3, bytes(136))
+
+    def test_rejects_v4(self):
+        """Never send a whole-value SET to a chunk-based firmware."""
+        payload = self.transport.values[PROTOCOL_INFO_UUID]
+        with self.assertRaisesRegex(ProtocolError, "Unsupported"):
+            decode_protocol_information(bytes([4]) + payload[1:])
+
+    def test_rejects_trailing_response_data(self):
+        """The response must have exactly its declared length."""
+        with self.assertRaises(ProtocolError):
+            decode_response(struct.pack("<BBIBBI", 1, 0, 1, 3, 0, 4) + b"extra")
 
     def test_rejects_contract_mismatch(self):
         """Fail the handshake when the catalog fingerprint differs."""

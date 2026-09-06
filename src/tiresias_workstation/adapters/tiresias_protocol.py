@@ -45,11 +45,11 @@ FIRMWARE_REVISION_UUID = "00002a26-0000-1000-8000-00805f9b34fb"
 
 _PROTOCOL_INFO = struct.Struct("<BBHIHHIII")
 _STATUS = struct.Struct("<BBBBIIBBH")
-_REQUEST = struct.Struct("<BBIBB4s")
-_RESPONSE = struct.Struct("<BBIBB4sI")
+_REQUEST = struct.Struct("<BBIBB")
+_RESPONSE = struct.Struct("<BBIBBI")
 
-_PROTOCOL_MAJOR = 4
-_PARAMETER_CHUNK_SIZE = 4
+_PROTOCOL_MAJOR = 5
+_MAX_PARAMETER_SIZE = max(parameter.byte_count for parameter in DSP_PARAMETERS)
 _GET_PARAMETER = 1
 _SET_PARAMETER = 2
 
@@ -60,8 +60,8 @@ class TiresiasProtocolClient:
     Args:
         transport: Connected-device transport responsible only for BLE and
             generic GATT mechanics.
-        response_timeout: Maximum wait for each correlated byte-chunk response, in
-            seconds.
+        response_timeout: Deadline for each parameter exchange, in seconds.
+            Subscription teardown is separately bounded to one second.
     """
 
     def __init__(
@@ -215,13 +215,18 @@ class TiresiasProtocolClient:
         parameter_id: int,
         request_data: bytes,
     ) -> tuple[bytes, int]:
-        """Serialize opaque byte chunks under one response subscription."""
+        """Serialize one complete parameter exchange under a bounded timeout."""
         async with self._request_lock:
-            return await self._exchange_bytes_serialized(
-                opcode,
-                parameter_id,
-                request_data,
-            )
+            try:
+                async with asyncio.timeout(self._response_timeout):
+                    return await self._exchange_bytes_serialized(
+                        opcode, parameter_id, request_data
+                    )
+            except TimeoutError as error:
+                raise TimeoutError(
+                    "The device did not return a parameter result. The complete "
+                    "value may have committed; reconnect and read it before retrying."
+                ) from error
 
     async def _exchange_bytes_serialized(
         self,
@@ -229,94 +234,53 @@ class TiresiasProtocolClient:
         parameter_id: int,
         request_data: bytes,
     ) -> tuple[bytes, int]:
-        """Exchange indexed byte chunks while owning the operation slot."""
+        """Send one whole value and require its correlated terminal indication.
+
+        A lost response leaves the commit outcome uncertain, but cannot leave a
+        prefix of the parameter committed. No automatic SET retry is performed.
+        """
         loop = asyncio.get_running_loop()
-        response_future: asyncio.Future[
-            tuple[int, RequestResult, int, int, int, bytes, int]
-        ] | None = None
-        expected_transaction_id = 0
+        transaction_id = self._allocate_transaction_id()
+        response_future = loop.create_future()
 
         def response_received(payload: bytes) -> None:
-            """Accept only the indication correlated to the active byte chunk."""
-            nonlocal response_future
+            """Resolve the active operation only for its transaction identifier."""
+            if response_future.done():
+                return
             try:
                 response = decode_response(payload)
             except ProtocolError as error:
-                if response_future is not None and not response_future.done():
-                    response_future.set_exception(error)
+                response_future.set_exception(error)
                 return
-            if (
-                response[2] == expected_transaction_id
-                and response_future is not None
-                and not response_future.done()
-            ):
+            if response[2] == transaction_id:
                 response_future.set_result(response)
 
-        received_data = bytearray()
-        revisions: set[int] = set()
-        final_revision = 0
-        await self._transport.start_notifications(RESPONSE_UUID, response_received)
+        data = request_data if opcode == _SET_PARAMETER else b""
+        payload = _REQUEST.pack(opcode, 0, transaction_id, parameter_id, len(data)) + data
         try:
-            for byte_offset in range(0, len(request_data), _PARAMETER_CHUNK_SIZE):
-                expected_transaction_id = self._allocate_transaction_id()
-                response_future = loop.create_future()
-                request_chunk = request_data[
-                    byte_offset : byte_offset + _PARAMETER_CHUNK_SIZE
-                ].ljust(_PARAMETER_CHUNK_SIZE, b"\x00")
-                payload = _REQUEST.pack(
-                    opcode,
-                    0,
-                    expected_transaction_id,
-                    parameter_id,
-                    byte_offset,
-                    request_chunk,
-                )
-                await self._transport.write_characteristic(
-                    REQUEST_UUID,
-                    payload,
-                    response=True,
-                )
-                try:
-                    response = await asyncio.wait_for(
-                        response_future,
-                        timeout=self._response_timeout,
-                    )
-                except TimeoutError as error:
-                    raise TimeoutError(
-                        "The device did not return a parameter result."
-                    ) from error
-
-                (
-                    response_opcode,
-                    result,
-                    _,
-                    response_id,
-                    response_byte_offset,
-                    response_data,
-                    revision,
-                ) = response
-                if (
-                    response_opcode != opcode
-                    or response_id != parameter_id
-                    or response_byte_offset != byte_offset
-                ):
-                    raise ProtocolError(
-                        "The correlated response does not match the request."
-                    )
-                if result is not RequestResult.OK:
-                    raise RequestError(result, parameter_id)
-                remaining = len(request_data) - byte_offset
-                received_data.extend(response_data[:remaining])
-                revisions.add(revision)
-                final_revision = revision
+            await self._transport.start_notifications(RESPONSE_UUID, response_received)
+            await self._transport.write_characteristic(REQUEST_UUID, payload, response=True)
+            response = await response_future
+            response_opcode, result, _, response_id, response_data, revision = response
+            if response_opcode != opcode or response_id != parameter_id:
+                raise ProtocolError("The correlated response does not match the request.")
+            if result is not RequestResult.OK:
+                raise RequestError(result, parameter_id)
+            if len(response_data) != len(request_data):
+                raise ProtocolError("The response does not contain the complete parameter.")
+            if opcode == _SET_PARAMETER and response_data != request_data:
+                raise ProtocolError("The confirmed parameter differs from the requested value.")
+            return response_data, revision
         finally:
-            await self._transport.stop_notifications(RESPONSE_UUID)
-
-        if opcode == _GET_PARAMETER and len(revisions) != 1:
-            raise ProtocolError(
-                "Parameter revision changed during a multi-chunk read."
-            )
-        return bytes(received_data), final_revision
+            # A disconnect can also end a subscription. Preserve the original
+            # operation failure if cleanup itself fails.
+            response_future.cancel()
+            try:
+                await asyncio.wait_for(
+                    self._transport.stop_notifications(RESPONSE_UUID), timeout=1.0
+                )
+            except Exception:
+                pass
 
     def _allocate_transaction_id(self) -> int:
         """Return a nonzero 32-bit transaction identifier for this process."""
@@ -346,7 +310,10 @@ def decode_protocol_information(payload: bytes) -> ProtocolInformation:
     ) = _PROTOCOL_INFO.unpack(payload)
     if major != _PROTOCOL_MAJOR or length != _PROTOCOL_INFO.size:
         raise ProtocolError(f"Unsupported Tiresias protocol {major}.{minor}.")
-    if maximum_request < _REQUEST.size or maximum_response < _RESPONSE.size:
+    if (
+        maximum_request < _REQUEST.size + _MAX_PARAMETER_SIZE
+        or maximum_response < _RESPONSE.size + _MAX_PARAMETER_SIZE
+    ):
         raise ProtocolError("Device request or response capacity is too small.")
     if contract_crc32 != DSP_PARAMETER_CONTRACT_CRC32:
         raise ProtocolError("Device uses an incompatible DSP parameter contract.")
@@ -387,7 +354,7 @@ def decode_status(payload: bytes) -> DeviceStatus:
         byte_offset,
         tail,
     ) = _STATUS.unpack(payload)
-    if reserved != 0 or tail != 0 or flags & ~0x07:
+    if reserved != 0 or tail != 0 or byte_offset != 0 or flags & ~0x07:
         raise ProtocolError("Status contains nonzero reserved data.")
     try:
         return DeviceStatus(
@@ -405,31 +372,21 @@ def decode_status(payload: bytes) -> DeviceStatus:
 
 def decode_response(
     payload: bytes,
-) -> tuple[int, RequestResult, int, int, int, bytes, int]:
-    """Decode one fixed 16-byte correlated opaque-byte response."""
-    if len(payload) != _RESPONSE.size:
-        raise ProtocolError("Parameter response must be 16 bytes.")
-    (
-        opcode,
-        raw_result,
-        transaction_id,
-        parameter_id,
-        byte_offset,
-        data,
-        revision,
-    ) = _RESPONSE.unpack(payload)
-    if opcode not in (_GET_PARAMETER, _SET_PARAMETER):
-        raise ProtocolError("Parameter response has an invalid opcode.")
+) -> tuple[int, RequestResult, int, int, bytes, int]:
+    """Decode a v5 whole-parameter response, rejecting partial or trailing data."""
+    if not _RESPONSE.size <= len(payload) <= _RESPONSE.size + _MAX_PARAMETER_SIZE:
+        raise ProtocolError("Parameter response has an invalid length.")
+    opcode, raw_result, transaction_id, parameter_id, length, revision = (
+        _RESPONSE.unpack_from(payload)
+    )
+    if len(payload) != _RESPONSE.size + length:
+        raise ProtocolError("Parameter response length does not match its payload.")
+    if opcode not in (_GET_PARAMETER, _SET_PARAMETER) or transaction_id == 0:
+        raise ProtocolError("Parameter response has an invalid opcode or transaction.")
     try:
         result = RequestResult(raw_result)
     except ValueError as error:
         raise ProtocolError("Parameter response has an invalid result.") from error
-    return (
-        opcode,
-        result,
-        transaction_id,
-        parameter_id,
-        byte_offset,
-        data,
-        revision,
-    )
+    if result is not RequestResult.OK and length != 0:
+        raise ProtocolError("Failed parameter response must not contain value data.")
+    return opcode, result, transaction_id, parameter_id, payload[_RESPONSE.size:], revision
