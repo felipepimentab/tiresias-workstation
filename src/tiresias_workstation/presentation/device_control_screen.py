@@ -8,8 +8,10 @@ from math import log10
 
 from PySide6.QtCore import QPointF, QRectF, Qt, Slot
 from PySide6.QtGui import (
+    QBrush,
     QColor,
     QFontDatabase,
+    QLinearGradient,
     QPaintEvent,
     QPainter,
     QPainterPath,
@@ -55,6 +57,15 @@ from tiresias_workstation.domain.tiresias import (
 
 _COMPRESSOR_PARAMETER_IDS = frozenset(range(3, 11))
 _GAIN_PARAMETER_IDS = frozenset(range(11, 15))
+_COMPRESSOR_INPUT_LEVELS_DBFS = (
+    -90.0,
+    -90.0,
+    *tuple(float(value) for value in range(-87, 7, 3)),
+)
+_COMPRESSOR_X_MIN_DBFS = -90.0
+_COMPRESSOR_X_MAX_DBFS = 6.0
+_COMPRESSOR_Y_MIN_DBFS = -113.0
+_COMPRESSOR_Y_MAX_DBFS = 27.0
 
 _EDITOR_EMPTY = 0
 _EDITOR_ADC_SELECT = 1
@@ -71,6 +82,7 @@ class CompressorCurveWidget(QWidget):
         """Create an empty graph with a useful minimum inspection size."""
         super().__init__()
         self._values: tuple[float, ...] = ()
+        self._points_dbfs: tuple[tuple[float, float], ...] = ()
         self.setObjectName("compressorCurve")
         self.setMinimumHeight(210)
 
@@ -79,6 +91,11 @@ class CompressorCurveWidget(QWidget):
         """Return the currently displayed dimensionless LUT values."""
         return self._values
 
+    @property
+    def points_dbfs(self) -> tuple[tuple[float, float], ...]:
+        """Return plotted input/output coordinates in dBFS."""
+        return self._points_dbfs
+
     def set_values(self, values: tuple[float, ...]) -> None:
         """Replace plotted values without changing their stored DSP bytes.
 
@@ -86,6 +103,19 @@ class CompressorCurveWidget(QWidget):
             values: Dimensionless values decoded from SigmaDSP 5.23 words.
         """
         self._values = values
+        self._points_dbfs = tuple(
+            (
+                input_level,
+                (
+                    input_level + 20.0 * log10(linear_gain)
+                    if linear_gain > 0.0
+                    else _COMPRESSOR_Y_MIN_DBFS
+                ),
+            )
+            for input_level, linear_gain in zip(
+                _COMPRESSOR_INPUT_LEVELS_DBFS, values
+            )
+        )
         self.update()
 
     def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802
@@ -99,80 +129,113 @@ class CompressorCurveWidget(QWidget):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.fillRect(self.rect(), QColor("#ffffff"))
 
-        plot = QRectF(self.rect()).adjusted(48.0, 14.0, -14.0, -32.0)
+        plot = QRectF(self.rect()).adjusted(42.0, 12.0, -10.0, -26.0)
         if plot.width() <= 0 or plot.height() <= 0:
             return
 
-        label_pen = QPen(QColor("#68686e"))
-        grid_pen = QPen(QColor("#e9e9eb"))
+        label_pen = QPen(QColor("#667382"))
+        grid_pen = QPen(QColor("#c4c9d0"))
         grid_pen.setWidthF(1.0)
-        for tick in range(5):
-            ratio = tick / 4.0
-            y = plot.top() + ratio * plot.height()
+        for input_level in range(-90, 1, 10):
+            x = self._x_position(plot, float(input_level))
+            painter.setPen(grid_pen)
+            painter.drawLine(QPointF(x, plot.top()), QPointF(x, plot.bottom()))
+            painter.setPen(label_pen)
+            painter.drawText(
+                QRectF(x - 18.0, plot.bottom() + 3.0, 36.0, 18.0),
+                Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
+                str(input_level),
+            )
+
+        for output_level in range(-100, 21, 20):
+            y = self._y_position(plot, float(output_level))
             painter.setPen(grid_pen)
             painter.drawLine(QPointF(plot.left(), y), QPointF(plot.right(), y))
+            painter.setPen(label_pen)
+            painter.drawText(
+                QRectF(0.0, y - 9.0, plot.left() - 6.0, 18.0),
+                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+                str(output_level),
+            )
 
         painter.setPen(label_pen)
         painter.drawText(
-            QRectF(plot.left(), plot.bottom() + 7.0, plot.width(), 18.0),
-            Qt.AlignmentFlag.AlignCenter,
-            "LUT index",
+            QRectF(0.0, plot.bottom() - 9.0, plot.left() - 6.0, 18.0),
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+            "-113",
         )
-        if not self._values:
+        if not self._points_dbfs:
             painter.drawText(
                 plot, Qt.AlignmentFlag.AlignCenter, "Read to display curve"
             )
+            painter.setPen(QPen(QColor("#7f8b99")))
+            painter.drawRect(plot)
             return
 
-        minimum = min(self._values)
-        maximum = max(self._values)
-        span = maximum - minimum
-        if span == 0.0:
-            span = max(abs(maximum) * 0.1, 1.0)
-            minimum -= span / 2.0
-            maximum += span / 2.0
-        else:
-            margin = span * 0.08
-            minimum -= margin
-            maximum += margin
-        span = maximum - minimum
-
-        for tick in range(5):
-            ratio = tick / 4.0
-            value = maximum - ratio * span
-            y = plot.top() + ratio * plot.height()
-            painter.drawText(
-                QRectF(0.0, y - 8.0, plot.left() - 7.0, 16.0),
-                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
-                f"{value:.3g}",
-            )
-
-        path = QPainterPath()
-        denominator = max(len(self._values) - 1, 1)
-        for index, value in enumerate(self._values):
-            x = plot.left() + (index / denominator) * plot.width()
-            y = plot.bottom() - ((value - minimum) / span) * plot.height()
+        curve = QPainterPath()
+        for index, (input_level, output_level) in enumerate(self._points_dbfs):
+            x = self._x_position(plot, input_level)
+            y = self._y_position(plot, output_level)
             point = QPointF(x, y)
             if index == 0:
-                path.moveTo(point)
+                curve.moveTo(point)
             else:
-                path.lineTo(point)
-        curve_pen = QPen(QColor("#007aff"))
-        curve_pen.setWidthF(2.0)
-        painter.setPen(curve_pen)
-        painter.drawPath(path)
+                curve.lineTo(point)
 
-        painter.setPen(label_pen)
-        painter.drawText(
-            QRectF(plot.left(), plot.bottom() + 2.0, 40.0, 16.0),
-            Qt.AlignmentFlag.AlignLeft,
-            "0",
+        fill = QPainterPath(curve)
+        last_x = self._x_position(plot, self._points_dbfs[-1][0])
+        first_x = self._x_position(plot, self._points_dbfs[0][0])
+        fill.lineTo(last_x, plot.bottom())
+        fill.lineTo(first_x, plot.bottom())
+        fill.closeSubpath()
+        gradient = QLinearGradient(plot.topLeft(), plot.bottomLeft())
+        gradient.setColorAt(0.0, QColor(92, 151, 230, 35))
+        gradient.setColorAt(1.0, QColor(92, 151, 230, 115))
+        painter.fillPath(fill, QBrush(gradient))
+
+        curve_pen = QPen(QColor("#6f7d8e"))
+        curve_pen.setWidthF(1.25)
+        painter.setPen(curve_pen)
+        painter.drawPath(curve)
+
+        emphasized = frozenset((0, 7, 16, 24, len(self._points_dbfs) - 1))
+        for index, (input_level, output_level) in enumerate(self._points_dbfs):
+            centre = QPointF(
+                self._x_position(plot, input_level),
+                self._y_position(plot, output_level),
+            )
+            if index in emphasized:
+                painter.setPen(QPen(QColor("#233b75"), 1.0))
+                painter.setBrush(QColor("#6b98ef"))
+                painter.drawEllipse(centre, 4.7, 4.7)
+            else:
+                painter.setPen(QPen(QColor("#6f7d8e"), 0.8))
+                painter.setBrush(QColor("#b9c4d1"))
+                painter.drawEllipse(centre, 1.6, 1.6)
+
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.setPen(QPen(QColor("#7f8b99"), 1.0))
+        painter.drawRect(plot)
+
+    @staticmethod
+    def _x_position(plot: QRectF, input_level_dbfs: float) -> float:
+        """Map a compressor input level in dBFS to the graph rectangle."""
+        ratio = (input_level_dbfs - _COMPRESSOR_X_MIN_DBFS) / (
+            _COMPRESSOR_X_MAX_DBFS - _COMPRESSOR_X_MIN_DBFS
         )
-        painter.drawText(
-            QRectF(plot.right() - 40.0, plot.bottom() + 2.0, 40.0, 16.0),
-            Qt.AlignmentFlag.AlignRight,
-            str(len(self._values) - 1),
+        return plot.left() + ratio * plot.width()
+
+    @staticmethod
+    def _y_position(plot: QRectF, output_level_dbfs: float) -> float:
+        """Map a compressor output level in dBFS to the graph rectangle."""
+        bounded = min(
+            max(output_level_dbfs, _COMPRESSOR_Y_MIN_DBFS),
+            _COMPRESSOR_Y_MAX_DBFS,
         )
+        ratio = (bounded - _COMPRESSOR_Y_MIN_DBFS) / (
+            _COMPRESSOR_Y_MAX_DBFS - _COMPRESSOR_Y_MIN_DBFS
+        )
+        return plot.bottom() - ratio * plot.height()
 
 
 class DeviceControlScreen(QWidget):
@@ -841,9 +904,13 @@ class DeviceControlScreen(QWidget):
         if self._is_compressor(definition):
             values = decode_sigma_5_23_words(value.data)
             self._compressor_curve.set_values(values)
+            outputs = tuple(
+                output_level
+                for _input_level, output_level in self._compressor_curve.points_dbfs
+            )
             self._curve_summary.setText(
-                f"{len(values)} words · linear gain {min(values):.4g} to "
-                f"{max(values):.4g}"
+                f"{len(values)} points · input −90 to +6 dBFS · output "
+                f"{min(outputs):.1f} to {max(outputs):.1f} dBFS"
             )
             return
 

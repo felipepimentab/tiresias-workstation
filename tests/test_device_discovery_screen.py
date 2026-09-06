@@ -260,7 +260,14 @@ class DeviceDiscoveryScreenTest(unittest.TestCase):
         self.assertEqual(header.sectionResizeMode(5), QHeaderView.ResizeMode.Stretch)
         self.assertEqual(len(curve.values), 34)
         self.assertEqual(curve.values, (1.0,) * 34)
-        self.assertIn("34 words", control._curve_summary.text())
+        self.assertEqual(curve.points_dbfs[0], (-90.0, -90.0))
+        self.assertEqual(curve.points_dbfs[-1], (6.0, 6.0))
+        self.assertIn("34 points", control._curve_summary.text())
+
+        half_gain = b"\x00\x40\x00\x00" * 34
+        self.controller.parameter_read.emit(ParameterValue(3, half_gain, 4))
+        self.assertAlmostEqual(curve.points_dbfs[0][1], -96.0206, places=4)
+        self.assertAlmostEqual(curve.points_dbfs[-1][1], -0.0206, places=4)
 
         self.controller.parameter_read.emit(
             ParameterValue(1, b"\x00\x00\x00\x02", 4)
