@@ -38,7 +38,7 @@ changing supported opaque parameter byte arrays.
 - Audiogram file import
 - NAL-NL2 integration
 - Raw-address DSP access
-- Atomic multi-chunk LUT writes
+- Atomic whole-prescription commit and rollback
 - Firmware update support
 - Clinical fitting or patient-data management
 
@@ -47,6 +47,6 @@ changing supported opaque parameter byte arrays.
 This architecture-validation MVP is complete when a user can connect to a
 supported board, validate the protocol and contract fingerprint, read every exposed
 parameter, persist every writable byte array, and load every bundled prescription
-without restarting either side. Each byte-chunk operation must have an
+without restarting either side. Each complete-parameter operation must have an
 unambiguous correlated result, and each write must have a firmware-confirmed
 revision.
