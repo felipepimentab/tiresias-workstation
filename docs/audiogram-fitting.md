@@ -1,5 +1,11 @@
 # Audiogram fitting and local prescriptions
 
+The current UI uses [five dedicated object pages](fitting-library.md).
+The combined Quick fitting page has been removed. This document describes the
+legacy combined-artifact format and underlying generation APIs retained for
+compatibility; use the object workflow for current UI instructions.
+
+
 For the meaning, units, creation, and dependencies of each data object, see
 [Prescription data objects and units](prescription-data-model.md).
 

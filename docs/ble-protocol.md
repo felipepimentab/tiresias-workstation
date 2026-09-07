@@ -37,9 +37,10 @@ zero payload count. Result codes retain their v4 values: OK, bad request, not
 found, read-only, out of range, busy, persistence failure, internal error, DSP
 failure. Admission failures are ATT errors, not application results.
 
-The fixed 15-entry contract and CRC32 `0x098986fa` are unchanged. IDs 3–10 each
-contain a writable 136-byte compressor LUT; ID 15 is a read-only 180-byte soft
-clip LUT. Names live in the workstation and DSP addresses remain in firmware.
+The 15-entry contract CRC32 is `0x7e8eb66c`. IDs 3–10 each contain a writable
+136-byte compressor LUT; ID 15 is a writable 180-byte soft clip LUT. The updated
+access flag enables complete output-stage loading and requires matching firmware
+and workstation catalogs. Names live in the workstation and DSP addresses remain in firmware.
 
 ## MTU and framing
 

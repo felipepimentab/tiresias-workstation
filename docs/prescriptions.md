@@ -1,5 +1,11 @@
 # Prescriptions and parameter tables
 
+For current UI instructions, use the [dedicated object pages](fitting-library.md).
+The former Prescriptions page is removed. Board loading now lives exclusively
+on Compiled DSP objects and Output-stage calibration. This document retains
+reference information about bundled assets and the shared transfer pipeline.
+
+
 ## MVP catalog
 
 The MVP contains ten precomputed SigmaStudio parameter tables corresponding to

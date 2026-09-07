@@ -17,3 +17,5 @@ with the Tiresias DK over Bluetooth Low Energy (BLE).
 
 These documents describe the intended product. Implementation details should
 be updated as the board protocol and DSP workflow become concrete.
+
+- [Data object workflow](fitting-library.md): dedicated reference/design and board-loadable pages, CRUD, provenance and transfer controls.

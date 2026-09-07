@@ -12,10 +12,13 @@ runs outside the UI thread so the window remains responsive.
 Product requirements, architecture, and the development roadmap are indexed in
 [the project documentation](docs/README.md).
 
-Open **Audiogram fitting** without connecting a board to enter left/right
-thresholds, generate targets and DSP values, save a named prescription, and
-export or manage saved JSON artifacts. See [the fitting documentation](docs/audiogram-fitting.md)
-for data formats, calibration assumptions, storage, and adding another rule.
+Use the dedicated sidebar pages for each data object. **Reference & design**
+contains Audiograms, Prescription targets, and Detector calibrations. **Load to
+board** contains Compiled DSP objects and Output-stage calibration, distinguished
+by blue transfer cards with payload details and loading progress. All objects
+can be managed offline; only the last two types can be loaded to the board.
+The ten standard audiograms and Eval calibration/output defaults are protected;
+duplicate them to customize. See [the object workflow](docs/fitting-library.md).
 
 ## Requirements
 

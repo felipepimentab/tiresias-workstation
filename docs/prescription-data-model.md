@@ -7,9 +7,9 @@ Your five-part model is structurally correct, with three important refinements:
 - Headroom and SoftClip form an **output-stage configuration**: reference-level
   conversion plus output limiting, not the B1–B8 detector calibration.
 
-This reference follows `tiresias-eval` at revision `309a644`. Names below describe
-data responsibilities; they do not imply that all five objects already have
-standalone workstation classes or editors.
+This reference follows `tiresias-eval` at revision `309a644`. The five objects now have separate persistent library entries and editors.
+See [Fitting library](fitting-library.md) for CRUD, generation, provenance,
+protected defaults, migration, and board loading.
 
 ## 1. Audiogram
 
@@ -58,10 +58,11 @@ standalone workstation classes or editors.
   filterbank, detector implementation/settings, and measurement setup. The
   eval data describe the **ADAU1787 EVAL configuration**, not an independently
   established microphone-to-SPL calibration of the Tiresias board.
-- **Current storage:** Eval's `detector_calibration_eval.json`. The workstation
-  currently embeds these measurements in `SigmaDspMapper`; it has no standalone
-  selectable `DeviceCalibration` model yet. `DspMapping` records the conversion
-  results and calibration ID, not the complete calibration measurement object.
+- **Workstation object:** `DeviceCalibration` contains eight `CalibrationBand`
+  measurements with paired axes and endpoint policies. It is stored independently
+  and selected during compilation. The Eval measurements are a protected default.
+  `DspMapping` records conversion results; compiled artifacts additionally retain
+  the complete selected calibration snapshot.
 
 ## 4. Compiled DSP prescription
 
@@ -79,7 +80,9 @@ standalone workstation classes or editors.
   calibration, DSP topology/grid, numeric limits, and compiler implementation.
   The biases preserve desired gain while keeping LUT values representable;
   they are not the output Headroom setting.
-- **Workstation objects:** `Prescription` holds the parameter bytes;
+- **Workstation objects:** `CompiledDspPrescription` retains the generated
+  artifact, complete calibration snapshot, compiler version and contract CRC.
+  `Prescription` holds the parameter bytes;
   `DspMapping` explains their derivation. Changing calibration normally requires
   regenerating **both LUTs and biases**. Keep their target/calibration/program
   provenance together, as the eval manifests do with input hashes.
@@ -104,11 +107,12 @@ standalone workstation classes or editors.
   campaign candidate is the word-aligned **nominal** SoftClip table; an
   experimental detector-calibrated table remains diagnostic only because its
   measured map was waveform dependent.
-- **Current storage:** Eval campaign configuration and separate Headroom/
-  SoftClip scripts. These values are **not included** in the workstation's
-  generated 11-parameter prescription, and there is no complete standalone
-  `OutputStageConfiguration` artifact yet. These engineering settings do not
-  establish actual receiver SPL or guarantee safe acoustic output.
+- **Workstation object:** `OutputStageConfiguration` is stored independently
+  and compiles Headroom plus the complete nominal SoftClip curve. The Eval
+  configuration is a protected default. Output values are loaded as a separate
+  two-parameter operation, not included in the 11-parameter compiled fitting.
+  The exported hold/decay remain fixed program prerequisites. These engineering
+  settings do not establish actual receiver SPL or guarantee safe acoustic output.
 
 ## Dependency and reuse rule
 
