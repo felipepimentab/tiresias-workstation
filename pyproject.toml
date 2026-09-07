@@ -31,3 +31,6 @@ requires-dist = [
     "numpy==2.4.6",
     "scipy==1.17.1",
 ]
+
+[tool.setuptools.package-data]
+"tiresias_workstation.adapters.library_assets" = ["*.json"]

@@ -16,6 +16,9 @@ from PySide6.QtWidgets import (
 )
 
 from tiresias_workstation.application.ble_controller import BleController
+from tiresias_workstation.application.fitting_library import FittingLibrary
+from tiresias_workstation.presentation.fitting_library_screen import FittingLibraryScreen, PAGE_LABELS
+from tiresias_workstation.domain.library import LIBRARY_KINDS
 from tiresias_workstation.application.default_prescriptions import (
     create_default_prescription_services,
 )
@@ -24,14 +27,10 @@ from tiresias_workstation.application.prescription_workbench import (
 )
 from tiresias_workstation.domain.prescriptions import PrescriptionCatalog
 from tiresias_workstation.domain.tiresias import DeviceSession
-from tiresias_workstation.presentation.audiogram_fitting_screen import (
-    AudiogramFittingScreen,
-)
 from tiresias_workstation.presentation.device_discovery_screen import (
     DeviceDiscoveryScreen,
 )
 from tiresias_workstation.presentation.device_control_screen import DeviceControlScreen
-from tiresias_workstation.presentation.prescription_screen import PrescriptionScreen
 
 
 class MainWindow(QMainWindow):
@@ -42,16 +41,18 @@ class MainWindow(QMainWindow):
         controller: BleController | None = None,
         prescription_catalog: PrescriptionCatalog | None = None,
         prescription_workbench: PrescriptionWorkbench | None = None,
+        fitting_library: FittingLibrary | None = None,
     ) -> None:
         """Initialize the workstation window.
 
         Args:
             controller: Optional controller for dependency injection. A real
                 :class:`BleController` is created when omitted.
-            prescription_catalog: Optional catalog for alternate or custom
-                prescription sources.
+            prescription_catalog: Legacy catalog argument retained for constructor
+                compatibility. Object pages use the fitting library.
             prescription_workbench: Optional custom fitting coordinator for
                 tests or alternate rule and storage configurations.
+            fitting_library: Optional independent object library for tests or alternate storage.
         """
         super().__init__()
 
@@ -64,34 +65,37 @@ class MainWindow(QMainWindow):
                 QStandardPaths.StandardLocation.AppDataLocation
             )
         ) / "generated-prescriptions"
-        default_workbench, default_catalog = create_default_prescription_services(
-            storage_directory
-        )
+        default_workbench = default_catalog = None
+        if prescription_workbench is None or prescription_catalog is None or (
+            fitting_library is None and prescription_workbench.library is None
+        ):
+            default_workbench, default_catalog = create_default_prescription_services(
+                storage_directory
+            )
         self._prescription_catalog = prescription_catalog or default_catalog
-        self._prescription_workbench = (
-            prescription_workbench or default_workbench
-        )
+        self._prescription_workbench = prescription_workbench or default_workbench
+        library = fitting_library or self._prescription_workbench.library
+        if library is None:
+            library = default_workbench.library
 
         self.setWindowTitle("Tiresias Workstation")
-        self.resize(1180, 820)
         self.setMinimumSize(960, 680)
+        available = self.screen().availableGeometry()
+        # Qt excludes the menu bar and Dock; leave room for the window frame
+        # and a small desktop margin without maximizing the window.
+        self.resize(min(1440, available.width() - 32),
+                    min(900, available.height() - 48))
         self.setDocumentMode(True)
         self.setUnifiedTitleAndToolBarOnMac(True)
 
         self.device_discovery_screen = DeviceDiscoveryScreen(self._controller)
         self.device_control_screen = DeviceControlScreen(self._controller)
-        self.prescription_screen = PrescriptionScreen(
-            self._controller, self._prescription_catalog
-        )
-        self.audiogram_fitting_screen = AudiogramFittingScreen(
-            self._prescription_workbench
-        )
-        self.audiogram_fitting_screen.prescription_saved.connect(
-            self.prescription_screen.refresh_catalog
-        )
-        self.audiogram_fitting_screen.prescription_deleted.connect(
-            self.prescription_screen.refresh_catalog
-        )
+        self.object_screens = {
+            kind: FittingLibraryScreen(library, self._controller, kind=kind)
+            for kind in LIBRARY_KINDS
+        }
+        for screen in self.object_screens.values():
+            screen.changed.connect(self._refresh_objects)
         self.setCentralWidget(self._build_application_shell())
         self._controller.connection_started.connect(self._connection_started)
         self._controller.connection_succeeded.connect(self._connection_succeeded)
@@ -134,23 +138,22 @@ class MainWindow(QMainWindow):
         self._board_button.setObjectName("boardNavigationButton")
         self._parameters_button = self._navigation_row("DSP parameters", enabled=False)
         self._parameters_button.setObjectName("parametersNavigationButton")
-        self._prescriptions_button = self._navigation_row(
-            "Prescriptions", enabled=False
-        )
-        self._prescriptions_button.setObjectName("prescriptionsNavigationButton")
         sidebar_layout.addWidget(self._devices_button)
         sidebar_layout.addWidget(self._board_button)
         sidebar_layout.addWidget(self._parameters_button)
-        sidebar_layout.addWidget(self._prescriptions_button)
-        self._fitting_button = self._navigation_row("Audiogram fitting")
-        self._fitting_button.setObjectName("fittingNavigationButton")
-        sidebar_layout.addWidget(self._fitting_button)
-        sidebar_layout.addWidget(self._navigation_row("Diagnostics", enabled=False))
-
-        future_label = QLabel("LATER RELEASES")
-        future_label.setObjectName("sidebarSectionLabel")
-        sidebar_layout.addWidget(future_label)
-        sidebar_layout.addWidget(self._navigation_row("DSP editor", enabled=False))
+        self._object_buttons = {}
+        for group, kinds in (("REFERENCE & DESIGN", LIBRARY_KINDS[:3]),
+                             ("LOAD TO BOARD", LIBRARY_KINDS[3:])):
+            label = QLabel(group)
+            label.setObjectName("sidebarSectionLabel")
+            sidebar_layout.addWidget(label)
+            for kind in kinds:
+                button = self._navigation_row(PAGE_LABELS[kind])
+                button.setObjectName(f"{kind}NavigationButton")
+                button.setProperty("boardLoadable", kind in ("compiled", "outputs"))
+                button.clicked.connect(lambda _checked=False, selected=kind: self._show_object(selected))
+                sidebar_layout.addWidget(button)
+                self._object_buttons[kind] = button
         sidebar_layout.addStretch()
 
         boundary = QLabel("Engineering tool\nNot for clinical use")
@@ -169,16 +172,14 @@ class MainWindow(QMainWindow):
         self._content_stack = QStackedWidget()
         self._content_stack.addWidget(self.device_discovery_screen)
         self._content_stack.addWidget(self.device_control_screen)
-        self._content_stack.addWidget(self.prescription_screen)
-        self._content_stack.addWidget(self.audiogram_fitting_screen)
+        for screen in self.object_screens.values():
+            self._content_stack.addWidget(screen)
         content_layout.addWidget(self._content_stack, 1)
         shell_layout.addWidget(content, 1)
 
         self._devices_button.clicked.connect(self._show_devices)
         self._board_button.clicked.connect(self._show_board)
         self._parameters_button.clicked.connect(self._show_parameters)
-        self._prescriptions_button.clicked.connect(self._show_prescriptions)
-        self._fitting_button.clicked.connect(self._show_fitting)
         return shell
 
     def _build_connection_header(self) -> QFrame:
@@ -270,19 +271,18 @@ class MainWindow(QMainWindow):
         self.device_control_screen.show_parameters()
         self._select_navigation(self._parameters_button)
 
-    @Slot()
-    def _show_prescriptions(self) -> None:
-        """Navigate to catalog-based prescription loading."""
-        self.prescription_screen.refresh_catalog()
-        self._content_stack.setCurrentWidget(self.prescription_screen)
-        self._select_navigation(self._prescriptions_button)
+    def _show_object(self, kind: str) -> None:
+        """Open one data object page, available both online and offline."""
+        screen = self.object_screens[kind]
+        screen.refresh()
+        self._content_stack.setCurrentWidget(screen)
+        self._select_navigation(self._object_buttons[kind])
 
     @Slot()
-    def _show_fitting(self) -> None:
-        """Navigate to local audiogram fitting and artifact management."""
-        self._content_stack.setCurrentWidget(self.audiogram_fitting_screen)
-        self.audiogram_fitting_screen.refresh_saved()
-        self._select_navigation(self._fitting_button)
+    def _refresh_objects(self) -> None:
+        """Keep source references and object lists synchronized after CRUD."""
+        for screen in self.object_screens.values():
+            screen.refresh()
 
     @Slot(str)
     def _connection_started(self, address: str) -> None:
@@ -337,8 +337,8 @@ class MainWindow(QMainWindow):
             )
         self._board_button.setEnabled(True)
         self._parameters_button.setEnabled(True)
-        self._prescriptions_button.setEnabled(True)
-        self._show_board()
+        if self._content_stack.currentWidget() not in self.object_screens.values():
+            self._show_board()
 
     @Slot(str)
     def _session_lost(self, _address: str) -> None:
@@ -351,8 +351,8 @@ class MainWindow(QMainWindow):
         )
         self._board_button.setEnabled(False)
         self._parameters_button.setEnabled(False)
-        self._prescriptions_button.setEnabled(False)
-        self._show_devices()
+        if self._content_stack.currentWidget() not in self.object_screens.values():
+            self._show_devices()
 
     def _select_navigation(self, selected: QPushButton) -> None:
         """Update the active sidebar style for one implemented page."""
@@ -360,8 +360,7 @@ class MainWindow(QMainWindow):
             self._devices_button,
             self._board_button,
             self._parameters_button,
-            self._prescriptions_button,
-            self._fitting_button,
+            *self._object_buttons.values(),
         ):
             button.setProperty("selected", button is selected)
             button.style().unpolish(button)

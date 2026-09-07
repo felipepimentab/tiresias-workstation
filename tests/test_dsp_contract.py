@@ -50,8 +50,8 @@ class DspContractTests(unittest.TestCase):
             [4, 4, 136, 136, 136, 136, 136, 136, 136, 136, 4, 4, 4, 4, 180],
         )
 
-    def test_only_soft_clip_remains_read_only(self):
-        """Permit prescription parameters while protecting the Soft Clip LUT."""
+    def test_output_stage_parameters_are_writable(self):
+        """Permit both compiled prescriptions and output-stage loading."""
         writable = [
             definition
             for definition in DSP_PARAMETERS
@@ -60,7 +60,7 @@ class DspContractTests(unittest.TestCase):
 
         self.assertEqual(
             [int(definition.parameter_id) for definition in writable],
-            list(range(1, 15)),
+            list(range(1, 16)),
         )
     def test_public_metadata_matches_golden_contract_crc(self):
         """Pin the byte representation advertised by firmware protocol v5."""
@@ -76,17 +76,17 @@ class DspContractTests(unittest.TestCase):
             for definition in DSP_PARAMETERS
         )
 
-        self.assertEqual(zlib.crc32(entries) & 0xFFFFFFFF, 0x098986FA)
-        self.assertEqual(DSP_PARAMETER_CONTRACT_CRC32, 0x098986FA)
+        self.assertEqual(zlib.crc32(entries) & 0xFFFFFFFF, 0x7E8EB66C)
+        self.assertEqual(DSP_PARAMETER_CONTRACT_CRC32, 0x7E8EB66C)
 
     def test_writable_parameters_accept_only_complete_byte_arrays(self):
         """Validate access and size without assigning numerical meaning."""
         writable = DSP_PARAMETERS[0]
-        read_only = DSP_PARAMETERS[14]
+        soft_clip = DSP_PARAMETERS[14]
 
         self.assertTrue(writable.accepts(b"\x00\x00\x00\x03"))
         self.assertFalse(writable.accepts(b"\x00"))
-        self.assertFalse(read_only.accepts(bytes(read_only.byte_count)))
+        self.assertTrue(soft_clip.accepts(bytes(soft_clip.byte_count)))
 
 
 if __name__ == "__main__":

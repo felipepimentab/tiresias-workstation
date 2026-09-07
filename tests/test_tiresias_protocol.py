@@ -210,10 +210,18 @@ class TiresiasProtocolClientTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.transport.writes, [])
 
     async def test_reads_largest_parameter(self):
-        """Accept the complete 180-byte read-only soft-clip table."""
+        """Accept the complete 180-byte soft-clip table."""
         reading = await self.client.read_parameter(15)
         self.assertEqual(reading.data, bytes(range(180)))
         self.assertEqual(len(self.transport.writes), 1)
+
+    async def test_writes_complete_softclip_output_parameter(self):
+        """Carry the largest writable value in one 188-byte request."""
+        data = bytes(range(180))
+        written = await self.client.write_parameter(15, data)
+        self.assertEqual(written.data, data)
+        self.assertEqual(len(self.transport.writes), 1)
+        self.assertEqual(len(self.transport.writes[0]), 188)
 
     async def test_rejects_truncated_response(self):
         """Do not treat a missing tail as successful completion."""

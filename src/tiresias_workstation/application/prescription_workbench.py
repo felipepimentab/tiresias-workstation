@@ -26,6 +26,8 @@ class PrescriptionWorkbench:
         rules: tuple[PrescriptionRule, ...],
         mapper: DspPrescriptionMapper,
         store: GeneratedPrescriptionStore,
+        *,
+        library=None,
     ) -> None:
         """Configure selectable rules, DSP mapping, and persistence."""
         self._rules = {rule.metadata.rule_id: rule for rule in rules}
@@ -33,6 +35,7 @@ class PrescriptionWorkbench:
             raise ValueError("Prescription rule identifiers must be unique.")
         self._mapper = mapper
         self._store = store
+        self.library = library
 
     def list_rules(self) -> tuple[PrescriptionRuleMetadata, ...]:
         """Return rule metadata in application display order."""
@@ -105,18 +108,31 @@ class PrescriptionWorkbench:
     def save(self, artifact: GeneratedPrescription) -> None:
         """Persist one generated artifact in the local catalog."""
         self._store.save(artifact)
+        if self.library is not None:
+            self.library.import_legacy(artifact)
 
     def list_saved(self) -> tuple[GeneratedPrescription, ...]:
         """Return locally saved generated prescriptions."""
+        if self.library is not None:
+            return tuple(entry.value.artifact for entry in self.library.list("compiled"))
         return self._store.list()
 
     def get_saved(self, artifact_id: str) -> GeneratedPrescription:
         """Return one locally saved artifact."""
+        if self.library is not None:
+            return self.library.get("compiled", artifact_id).value.artifact
         return self._store.get(artifact_id)
 
     def delete(self, artifact_id: str) -> None:
         """Delete one local artifact by stable identifier."""
-        self._store.delete(artifact_id)
+        if self.library is not None:
+            self.library.delete("compiled", artifact_id)
+            try:
+                self._store.delete(artifact_id)
+            except KeyError:
+                pass
+        else:
+            self._store.delete(artifact_id)
 
     def export(self, artifact: GeneratedPrescription, path: Path) -> None:
         """Export all generation stages as a portable JSON artifact."""

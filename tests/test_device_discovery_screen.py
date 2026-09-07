@@ -312,58 +312,36 @@ class DeviceDiscoveryScreenTest(unittest.TestCase):
         self.window.close()
         self.assertTrue(self.controller.shutdown_called)
 
-    def test_selects_and_loads_a_standard_prescription(self):
-        """Navigate to the catalog and submit the selected profile."""
-        self.controller.connection_succeeded.emit(self.controller.device.address)
-        self.controller.session_loaded.emit(self.controller.session)
-        navigation = self.window.findChild(
-            QPushButton, "prescriptionsNavigationButton"
-        )
+    def test_object_navigation_replaces_overlapping_workflows(self):
+        """Expose each object once and group the two board-loadable kinds."""
+        for obsolete in ("prescriptionsNavigationButton", "fittingNavigationButton", "libraryNavigationButton"):
+            self.assertIsNone(self.window.findChild(QPushButton, obsolete))
+        for kind in ("audiograms", "targets", "calibrations", "compiled", "outputs"):
+            button = self.window.findChild(QPushButton, f"{kind}NavigationButton")
+            self.assertTrue(button.isEnabled())
+            button.click()
+            self.assertIs(self.window._content_stack.currentWidget(), self.window.object_screens[kind])
+            self.assertEqual(bool(button.property("boardLoadable")), kind in ("compiled", "outputs"))
+        self.controller.disconnected.emit(self.controller.device.address)
+        self.assertIs(self.window._content_stack.currentWidget(), self.window.object_screens["outputs"])
 
-        navigation.click()
-        self.app.processEvents()
-        screen = self.window.prescription_screen
-        table = screen.findChild(QTableWidget, "prescriptionTable")
-        load_button = screen.findChild(QPushButton, "loadPrescriptionButton")
-        progress = screen.findChild(QProgressBar, "prescriptionProgress")
-
-        self.assertEqual(table.rowCount(), 10)
-        self.assertEqual(table.item(0, 0).text(), "N1 standard audiogram")
-        self.assertEqual(table.item(9, 0).text(), "S3 standard audiogram")
-        table.selectRow(1)
-        load_button.click()
-
-        self.assertEqual(
-            [entry.profile_id for entry in self.controller.prescription_loads],
-            ["N2"],
-        )
-        self.assertEqual(progress.maximum(), 1100)
-        self.assertEqual(progress.value(), 1100)
-        self.assertIn("N2 loaded", screen._message.text())
-
-    def test_local_fitting_is_available_offline_and_refreshes_loading_catalog(self):
-        """Reuse the normal board-loading flow for a custom saved prescription."""
-        navigation = self.window.findChild(QPushButton, "fittingNavigationButton")
-        self.assertTrue(navigation.isEnabled())
-        navigation.click()
-        fitting = self.window.audiogram_fitting_screen
+    def test_generated_objects_share_the_board_loading_page(self):
+        """Load a saved compiled object from its dedicated page only."""
         artifact = self.window._prescription_workbench.generate(
             Audiogram((250.0, 500.0), (10.0, 20.0), (15.0, 25.0)),
-            rule_id="camfit-compressive-cec1", name="My custom fitting", ear="left",
+            rule_id="camfit-compressive-cec1", name="My compiled fitting", ear="left",
         )
-        fitting._show_artifact(artifact)
-        fitting._save_current()
-        table = self.window.prescription_screen.findChild(
-            QTableWidget, "prescriptionTable"
-        )
-        self.assertEqual(table.rowCount(), 11)
-        self.assertEqual(table.item(10, 0).text(), "My custom fitting")
+        self.window._prescription_workbench.save(artifact)
+        self.window.findChild(QPushButton, "compiledNavigationButton").click()
+        page = self.window.object_screens["compiled"]
+        self.assertEqual(page.items.count(), 1)
+        self.assertFalse(page.load_button.isEnabled())
         self.controller.session_loaded.emit(self.controller.session)
-        table.selectRow(10)
-        self.window.prescription_screen.findChild(
-            QPushButton, "loadPrescriptionButton"
-        ).click()
+        self.window.findChild(QPushButton, "compiledNavigationButton").click()
+        page.load_button.click()
         self.assertEqual(self.controller.prescription_loads, [artifact.prescription])
+        self.assertEqual(page.progress.value(), 1100)
+        self.assertIn("11 parameters", page.status.text())
 
 
 if __name__ == "__main__":

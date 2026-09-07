@@ -238,4 +238,19 @@ QProgressBar {
 QProgressBar::chunk { background: #727278; border-radius: 3px; }
 QSplitter::handle { background: #ffffff; }
 QSplitter::handle:hover { background: #f1f1f2; }
+
+#libraryToast {
+    background: #343438; color: #ffffff; border: 1px solid #535359;
+    border-radius: 8px; padding: 14px; font-size: 13px;
+}
+#referenceObjectRole { color: #68686e; font-size: 10px; font-weight: 600; }
+#boardObjectRole { color: #245a91; font-size: 10px; font-weight: 700; }
+#boardTransferCard {
+    background: #edf4fc; border: 1px solid #bdd2eb; border-radius: 8px;
+}
+#boardTransferCard QLabel { background: transparent; border: none; color: #24486e; }
+#loadObjectToBoardButton { background: #285e94; color: #ffffff; border-color: #285e94; }
+#loadObjectToBoardButton:hover:enabled { background: #214f7d; }
+#loadObjectToBoardButton:disabled { background: #e0e9f3; color: #667d97; border-color: #c6d4e5; }
+#boardTransferCard QProgressBar::chunk { background: #285e94; }
 """

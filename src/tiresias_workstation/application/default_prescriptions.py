@@ -2,6 +2,9 @@
 
 from pathlib import Path
 
+from tiresias_workstation.adapters.library_store import LibraryStore
+from tiresias_workstation.application.fitting_library import FittingLibrary, LibraryPrescriptionCatalog
+
 from tiresias_workstation.adapters.bundled_prescriptions import (
     BUNDLED_PRESCRIPTION_CATALOG,
 )
@@ -10,7 +13,6 @@ from tiresias_workstation.adapters.json_prescription_store import (
 )
 from tiresias_workstation.adapters.prescription_catalogs import (
     CompositePrescriptionCatalog,
-    SavedPrescriptionCatalog,
 )
 from tiresias_workstation.adapters.pyclarity_camfit import PyClarityCamfitRule
 from tiresias_workstation.adapters.sigma_dsp_mapper import SigmaDspMapper
@@ -32,13 +34,17 @@ def create_default_prescription_services(
         Workbench for fitting operations and combined bundled/local catalog.
     """
     store = JsonPrescriptionStore(directory)
+    library = FittingLibrary(LibraryStore(directory / "library"), (PyClarityCamfitRule(),))
+    for artifact in store.list():
+        library.import_legacy(artifact)
     workbench = PrescriptionWorkbench(
         (PyClarityCamfitRule(),),
         SigmaDspMapper(),
         store,
+        library=library,
     )
     catalog = CompositePrescriptionCatalog(
         BUNDLED_PRESCRIPTION_CATALOG,
-        SavedPrescriptionCatalog(store),
+        LibraryPrescriptionCatalog(library),
     )
     return workbench, catalog
