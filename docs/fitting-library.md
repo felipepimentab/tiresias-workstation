@@ -14,7 +14,7 @@ pages have been removed from the application shell.
 
 All five pages support offline creation and inspection. The three reference/design
 pages have no load controls. The two board-loadable pages have blue role labels,
-accented navigation, and a distinct Board transfer card with the selected payload,
+gray sidebar selection, and a distinct Board transfer card with the selected payload,
 connection instructions, a load action, and confirmed byte progress. Loading
 requires a validated connection; the shared controller prevents concurrent loads.
 Disconnection disables transfer while leaving the object page open for inspection.
@@ -26,7 +26,26 @@ provenance. The displayed **Output-stage calibration** page continues to use the
 ## Working with objects
 
 Use **New**, **View**, **Edit**, **Duplicate**, and **Delete**. The Values preview
-shows engineering units; JSON / provenance exposes the complete stored record.
+shows engineering units; **Provenance & JSON** exposes the complete stored record.
+Creation is the primary action in the page header; selection actions sit below
+the list and preview. Search filters objects by name and shows a result count.
+On macOS, Command-F focuses search and Command-N opens creation for the current
+object page (Control-F/Control-N on other platforms).
+
+Select an audiogram and choose **Generate target…** to carry it into target
+generation. Select a target and choose **Compile DSP…** to carry it into
+compilation. Saving opens the resulting object's dedicated page. Canceling
+leaves the source page unchanged. Both workflows still require explicit generation
+and saving; they never load values to the board automatically.
+
+Read-only references remain protected. If another saved object depends on an
+object being deleted, an eight-second toast explains the dependency and deletion
+is blocked. The full message also remains in the page status.
+
+The layout follows Apple's guidance on
+[sidebar hierarchy](https://developer.apple.com/design/human-interface-guidelines/sidebars)
+and [toolbar actions](https://developer.apple.com/design/human-interface-guidelines/toolbars),
+with neutral navigation, restrained borders, and compact metadata.
 The editor validates values before saving. User objects can be renamed and
 updated without changing their identity. Duplicate creates a new identity.
 
