@@ -9,10 +9,11 @@ import json
 import math
 
 from PySide6.QtCore import QObject, QRunnable, QThreadPool, QTimer, Qt, Signal, Slot
+from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QAbstractItemView, QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox,
     QFormLayout, QFrame, QProgressBar, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QListWidget,
-    QListWidgetItem, QMessageBox, QPlainTextEdit, QPushButton, QSplitter,
+    QListWidgetItem, QMessageBox, QPlainTextEdit, QPushButton, QSizePolicy, QSplitter,
     QTableWidget, QTableWidgetItem, QTabWidget, QVBoxLayout, QWidget,
 )
 
@@ -415,9 +416,11 @@ class FittingLibraryScreen(QWidget):
 
     Signals:
         changed(): A saved object was created, edited or deleted.
+        object_created(object): A downstream object was saved and should be shown.
     """
 
     changed = Signal()
+    object_created = Signal(object)
 
     def __init__(self, library: FittingLibrary, controller, parent=None, *, kind: str = "audiograms") -> None:
         """Build a dedicated object page.
@@ -444,47 +447,95 @@ class FittingLibraryScreen(QWidget):
         root.addWidget(role)
         title = QLabel(PAGE_LABELS[kind])
         title.setObjectName("pageTitle")
-        root.addWidget(title)
+        title_row = QHBoxLayout()
+        title_row.addWidget(title, 1)
+        self.new_button = QPushButton("Compile new" if kind == "compiled" else "Generate new" if kind == "targets" else "New " + SINGULAR[kind])
+        self.new_button.setObjectName("newLibraryObjectButton")
+        title_row.addWidget(self.new_button)
+        root.addLayout(title_row)
         explanation = QLabel(PAGE_DESCRIPTIONS[kind])
         explanation.setWordWrap(True)
+        explanation.setObjectName("pageSubtitle")
         root.addWidget(explanation)
+        root.setSpacing(12)
         splitter = QSplitter()
+        browser = QWidget()
+        browser_layout = QVBoxLayout(browser)
+        browser_layout.setContentsMargins(0, 0, 12, 0)
+        self.search = QLineEdit()
+        self.search.setPlaceholderText("Search " + PAGE_LABELS[kind].lower())
+        self.search.setAccessibleName("Search " + PAGE_LABELS[kind].lower())
+        self.search.setClearButtonEnabled(True)
+        browser_layout.addWidget(self.search)
         self.items = QListWidget()
-        self.items.setMinimumWidth(210)
-        self.items.setSpacing(4)
-        splitter.addWidget(self.items)
+        self.items.setObjectName("libraryObjectList")
+        self.items.setMinimumWidth(180)
+        self.items.setSpacing(3)
+        self.items.setTextElideMode(Qt.TextElideMode.ElideRight)
+        self.items.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        browser_layout.addWidget(self.items, 1)
+        self.object_count = QLabel()
+        self.object_count.setObjectName("libraryMetadata")
+        browser_layout.addWidget(self.object_count)
+        splitter.addWidget(browser)
         detail = QWidget()
         detail_layout = QVBoxLayout(detail)
+        detail_layout.setContentsMargins(12, 0, 0, 0)
+        self.object_title = QLabel()
+        self.object_title.setObjectName("libraryObjectTitle")
+        self.object_title.setWordWrap(True)
+        detail_layout.addWidget(self.object_title)
         self.summary = QLabel()
+        self.summary.setObjectName("libraryMetadata")
         self.summary.setWordWrap(True)
         self.summary.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         detail_layout.addWidget(self.summary)
+        self.empty_state = QLabel()
+        self.empty_state.setObjectName("libraryEmptyState")
+        self.empty_state.setWordWrap(True)
+        self.empty_state.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        detail_layout.addWidget(self.empty_state, 1)
         inspection = QTabWidget()
+        inspection.setObjectName("libraryInspection")
+        self.inspection = inspection
         self.values = QTableWidget()
+        self.values.setShowGrid(False)
+        self.values.setAlternatingRowColors(True)
+        self.values.verticalHeader().hide()
         self.values.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.values.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         inspection.addTab(self.values, "Values")
         self.details = QPlainTextEdit()
         self.details.setReadOnly(True)
-        inspection.addTab(self.details, "JSON / provenance")
+        inspection.addTab(self.details, "Provenance && JSON")
         detail_layout.addWidget(inspection)
         splitter.addWidget(detail)
+        splitter.setStretchFactor(0, 0)
         splitter.setStretchFactor(1, 1)
+        splitter.setSizes([230, 700])
         root.addWidget(splitter, 1)
         row = QHBoxLayout()
-        self.new_button = QPushButton("Compile new" if kind == "compiled" else "Generate new" if kind == "targets" else "New")
         self.view_button = QPushButton("View")
         self.edit_button = QPushButton("Edit")
         self.copy_button = QPushButton("Duplicate")
         self.delete_button = QPushButton("Delete")
-        for button in (self.new_button, self.view_button, self.edit_button, self.copy_button, self.delete_button):
+        self.delete_button.setObjectName("deleteLibraryObjectButton")
+        for button in (self.view_button, self.edit_button, self.copy_button, self.delete_button):
             row.addWidget(button)
         row.addStretch()
+        self.next_button = None
+        if kind in ("audiograms", "targets"):
+            self.next_button = QPushButton("Generate target…" if kind == "audiograms" else "Compile DSP…")
+            self.next_button.setToolTip("Use the selected " + SINGULAR[kind] + " in the next step.")
+            self.next_button.clicked.connect(self._next_step)
+            row.addWidget(self.next_button)
         root.addLayout(row)
         self.load_button = None
         self.transfer_panel = None
         self.status = QLabel("Reference objects are fixed; duplicate them to create custom versions.")
         self.status.setWordWrap(True)
+        self.status.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum)
+        self.status.setObjectName("libraryMetadata")
         if self.board_loadable:
             self.transfer_panel = QFrame()
             self.transfer_panel.setObjectName("boardTransferCard")
@@ -500,6 +551,7 @@ class FittingLibraryScreen(QWidget):
             transfer.addLayout(heading)
             self.transfer_summary = QLabel()
             self.transfer_summary.setWordWrap(True)
+            self.transfer_summary.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum)
             transfer.addWidget(self.transfer_summary)
             self.progress = QProgressBar()
             self.progress.setRange(0, 100)
@@ -511,6 +563,12 @@ class FittingLibraryScreen(QWidget):
             root.addWidget(self.transfer_panel)
         else:
             root.addWidget(self.status)
+        self.search.textChanged.connect(self.refresh)
+        for sequence, callback in ((QKeySequence.StandardKey.Find, self.search.setFocus),
+                                   (QKeySequence.StandardKey.New, lambda: self._edit(new=True))):
+            shortcut = QShortcut(QKeySequence(sequence), self)
+            shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+            shortcut.activated.connect(callback)
         self.items.currentItemChanged.connect(self._selected)
         self.items.itemDoubleClicked.connect(lambda *_: self._edit(view=True))
         self.new_button.clicked.connect(lambda: self._edit(new=True))
@@ -574,20 +632,31 @@ class FittingLibraryScreen(QWidget):
         current = self.items.currentItem()
         selected = select_id or (current.data(Qt.ItemDataRole.UserRole) if current else None)
         self.items.clear()
-        for entry in self.library.list(self.kind):
+        entries = self.library.list(self.kind)
+        query = self.search.text().strip().casefold()
+        for entry in entries:
+            if query and query not in entry.name.casefold():
+                continue
             item = QListWidgetItem(entry.name + ("  · Reference" if entry.read_only else ""))
             item.setData(Qt.ItemDataRole.UserRole, entry.item_id)
+            item.setToolTip(entry.name + (" — Read-only reference" if entry.read_only else ""))
             self.items.addItem(item)
             if entry.item_id == selected:
                 self.items.setCurrentItem(item)
         if self.items.currentRow() < 0 and self.items.count():
             self.items.setCurrentRow(0)
+        self.object_count.setText(f"{self.items.count()} of {len(entries)} objects" if query else f"{len(entries)} object{'s' if len(entries) != 1 else ''}")
         self._selected()
 
     @Slot()
     def _selected(self, *_args) -> None:
         """Show object identity, dependencies and inspectable data."""
         entry = self.selected_entry()
+        self.inspection.setVisible(entry is not None)
+        self.empty_state.setVisible(entry is None)
+        self.object_title.setText(entry.name if entry else "")
+        if self.next_button is not None:
+            self.next_button.setEnabled(entry is not None)
         for button in (self.view_button, self.copy_button):
             button.setEnabled(entry is not None)
         for button in (self.edit_button, self.delete_button):
@@ -600,11 +669,20 @@ class FittingLibraryScreen(QWidget):
                 payload = "11 parameters · 1,100 bytes · compressor LUTs + bias gains" if self.kind == "compiled" else "2 parameters · 184 bytes · Headroom + SoftClip"
                 self.transfer_summary.setText(f"Selected: {entry.name}\n{payload}")
         if entry is None:
-            self.summary.setText("No saved objects yet. Choose New to create one.")
+            self.summary.clear()
+            if self.search.text().strip():
+                self.empty_state.setText("No matching objects\nTry another name or clear the search.")
+            else:
+                hints = {
+                    "targets": "Generate a target from an audiogram and a prescriptive rule.",
+                    "compiled": "Compile a saved target with a detector calibration to create board values.",
+                }
+                self.empty_state.setText("No " + PAGE_LABELS[self.kind].lower() + " yet\n" +
+                                         hints.get(self.kind, "Create an object using the New button above."))
             self.details.clear()
             self.values.setRowCount(0)
             return
-        text = f"{entry.name}\n{'Read-only reference' if entry.read_only else 'Custom object'} · revision {entry.revision}\n{entry.provenance}"
+        text = f"{'Read-only reference · Duplicate to customize' if entry.read_only else 'Custom object'} · revision {entry.revision}"
         for source in entry.sources:
             try:
                 source_name = self.library.get(source.kind, source.item_id).name
@@ -615,7 +693,7 @@ class FittingLibraryScreen(QWidget):
         if changes:
             text += "\nSource changed since generation: " + ", ".join(changes) + ". Saved values remain unchanged."
         if entry.kind == "targets":
-            text += f"\nRule: {entry.value.rule.display_name} · {entry.value.rule.version}"
+            text += f"\nRule: {entry.value.rule.display_name}"
         if entry.kind == "compiled":
             text += f"\n{entry.value.artifact.mapping.ear.title()} ear · 11 parameters · 1,100 bytes"
         if entry.kind == "outputs":
@@ -668,8 +746,24 @@ class FittingLibraryScreen(QWidget):
             return
         dialog = LibraryEditor(self.library, self.kind, entry, self, view_only=view)
         if dialog.exec() == QDialog.DialogCode.Accepted:
+            self.search.clear()
             self.refresh(select_id=dialog.saved_entry.item_id)
             self.changed.emit()
+
+    @Slot()
+    def _next_step(self) -> None:
+        """Carry the selected source into generation and reveal the saved result."""
+        entry = self.selected_entry()
+        if entry is None or self.kind not in ("audiograms", "targets"):
+            return
+        destination = "targets" if self.kind == "audiograms" else "compiled"
+        dialog = LibraryEditor(self.library, destination, parent=self)
+        source_combo = dialog.audio if destination == "targets" else dialog.target
+        source_combo.setCurrentIndex(source_combo.findData(entry.item_id))
+        dialog.name.setText(entry.name + (" target" if destination == "targets" else " DSP"))
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            self.changed.emit()
+            self.object_created.emit(dialog.saved_entry)
 
     @Slot()
     def _copy(self) -> None:
@@ -678,6 +772,7 @@ class FittingLibraryScreen(QWidget):
             entry = self.selected_entry()
             if entry:
                 copied = self.library.duplicate(entry, entry.name + " copy")
+                self.search.clear()
                 self.refresh(select_id=copied.item_id)
                 self.changed.emit()
         except Exception as error:

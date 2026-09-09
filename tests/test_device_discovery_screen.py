@@ -332,8 +332,13 @@ class DeviceDiscoveryScreenTest(unittest.TestCase):
             rule_id="camfit-compressive-cec1", name="My compiled fitting", ear="left",
         )
         self.window._prescription_workbench.save(artifact)
-        self.window.findChild(QPushButton, "compiledNavigationButton").click()
         page = self.window.object_screens["compiled"]
+        page.search.setText("unrelated search")
+        entry = page.library.get("compiled", artifact.artifact_id)
+        self.window.object_screens["targets"].object_created.emit(entry)
+        self.assertIs(self.window._content_stack.currentWidget(), page)
+        self.assertEqual(page.selected_entry().item_id, entry.item_id)
+        self.assertEqual(page.search.text(), "")
         self.assertEqual(page.items.count(), 1)
         self.assertFalse(page.load_button.isEnabled())
         self.controller.session_loaded.emit(self.controller.session)

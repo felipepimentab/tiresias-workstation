@@ -6,7 +6,7 @@ import time
 import unittest
 from unittest.mock import patch
 
-from PySide6.QtWidgets import QApplication, QDialogButtonBox, QMessageBox, QTableWidgetItem
+from PySide6.QtWidgets import QApplication, QDialog, QDialogButtonBox, QMessageBox, QTableWidgetItem
 from tiresias_workstation.adapters.library_store import LibraryStore
 from tiresias_workstation.application.fitting_library import FittingLibrary
 from tiresias_workstation.presentation.fitting_library_screen import FittingLibraryScreen, LibraryEditor
@@ -165,6 +165,61 @@ class LibraryScreenTest(unittest.TestCase):
         self.assertEqual(page.items.count(), 0)
         with self.assertRaises(KeyError):
             self.library.get("targets", target.item_id)
+
+    def test_search_empty_state_and_duplicate_selection(self):
+        """Filter by name without allowing actions on invisible selections."""
+        self.screen.search.setText("n7")
+        self.assertEqual(self.screen.items.count(), 1)
+        self.assertEqual(self.screen.selected_entry().item_id, "N7")
+        self.screen.search.setText("nothing matches")
+        self.assertIsNone(self.screen.selected_entry())
+        self.assertTrue(self.screen.inspection.isHidden())
+        self.assertIn("No matching objects", self.screen.empty_state.text())
+        self.assertFalse(self.screen.next_button.isEnabled())
+        self.assertFalse(self.screen.delete_button.isEnabled())
+        self.screen.search.setText("n7")
+        self.screen.copy_button.click()
+        self.assertEqual(self.screen.search.text(), "")
+        self.assertFalse(self.screen.selected_entry().read_only)
+        self.assertFalse(self.screen.inspection.isHidden())
+
+    def test_next_steps_keep_selected_sources_and_publish_saved_results(self):
+        """Generate then compile through the actual dialogs with preselected inputs."""
+        audio = self.library.duplicate(self.library.get("audiograms", "N7"), "Custom source")
+        created = []
+        self.screen.object_created.connect(created.append)
+        self.screen.refresh(select_id=audio.item_id)
+
+        def generate(dialog):
+            self.assertEqual(dialog.audio.currentData(), audio.item_id)
+            dialog._generate_target()
+            self.wait_generation(dialog)
+            dialog._save()
+            return dialog.result()
+
+        with patch.object(LibraryEditor, "exec", generate):
+            self.screen.next_button.click()
+        target = created[-1]
+        self.assertEqual(target.sources[0].item_id, audio.item_id)
+        page = FittingLibraryScreen(self.library, self.controller, kind="targets")
+        self.addCleanup(page.close)
+        page.object_created.connect(created.append)
+
+        def compile_selected(dialog):
+            self.assertEqual(dialog.target.currentData(), target.item_id)
+            dialog._compile()
+            self.wait_generation(dialog)
+            dialog._save()
+            return dialog.result()
+
+        with patch.object(LibraryEditor, "exec", compile_selected):
+            page.next_button.click()
+        self.assertEqual(created[-1].kind, "compiled")
+        self.assertEqual(created[-1].sources[0].item_id, target.item_id)
+        count = len(created)
+        with patch.object(LibraryEditor, "exec", return_value=QDialog.DialogCode.Rejected):
+            page.next_button.click()
+        self.assertEqual(len(created), count)
 
     def test_custom_calibration_and_output_editors_persist_values(self):
         """Save user changes without modifying packaged Eval defaults."""

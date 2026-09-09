@@ -239,6 +239,27 @@ QProgressBar::chunk { background: #727278; border-radius: 3px; }
 QSplitter::handle { background: #ffffff; }
 QSplitter::handle:hover { background: #f1f1f2; }
 
+#libraryObjectTitle { font-size: 18px; font-weight: 600; }
+#libraryMetadata { color: #68686e; font-size: 12px; }
+#libraryEmptyState { color: #68686e; font-size: 14px; padding: 24px; }
+#libraryObjectList {
+    background: #fafafa; border: 1px solid #e7e7e8; border-radius: 8px;
+    padding: 6px; outline: none;
+}
+#libraryObjectList::item { padding: 10px 8px; border-radius: 5px; }
+#libraryObjectList::item:hover { background: #f0f0f1; }
+#libraryObjectList::item:selected { background: #e8e8e8; color: #202022; }
+#libraryObjectList::item:focus { border: 1px solid #80b2ed; }
+#libraryInspection::pane { border: none; padding-top: 8px; }
+#libraryInspection QTabBar::tab {
+    background: transparent; color: #68686e; padding: 8px 12px;
+    border-bottom: 2px solid transparent;
+}
+#libraryInspection QTabBar::tab:selected { color: #242426; border-bottom-color: #68686e; }
+#newLibraryObjectButton { background: #272729; color: white; border-color: #272729; }
+#newLibraryObjectButton:hover { background: #424244; }
+#newLibraryObjectButton:focus { border-color: #80b2ed; }
+#deleteLibraryObjectButton:enabled { color: #b42318; }
 #libraryToast {
     background: #343438; color: #ffffff; border: 1px solid #535359;
     border-radius: 8px; padding: 14px; font-size: 13px;

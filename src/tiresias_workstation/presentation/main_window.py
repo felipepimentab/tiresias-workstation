@@ -96,6 +96,7 @@ class MainWindow(QMainWindow):
         }
         for screen in self.object_screens.values():
             screen.changed.connect(self._refresh_objects)
+            screen.object_created.connect(self._show_created_object)
         self.setCentralWidget(self._build_application_shell())
         self._controller.connection_started.connect(self._connection_started)
         self._controller.connection_succeeded.connect(self._connection_succeeded)
@@ -186,7 +187,7 @@ class MainWindow(QMainWindow):
         """Build the status banner that remains visible on every screen."""
         header = QFrame()
         header.setObjectName("connectionHeader")
-        header.setMinimumHeight(70)
+        header.setMinimumHeight(58)
         layout = QHBoxLayout(header)
         layout.setContentsMargins(24, 11, 24, 11)
         layout.setSpacing(14)
@@ -277,6 +278,13 @@ class MainWindow(QMainWindow):
         screen.refresh()
         self._content_stack.setCurrentWidget(screen)
         self._select_navigation(self._object_buttons[kind])
+
+    def _show_created_object(self, entry) -> None:
+        """Open the saved result of a source page's next-step action."""
+        self._show_object(entry.kind)
+        page = self.object_screens[entry.kind]
+        page.search.clear()
+        page.refresh(select_id=entry.item_id)
 
     @Slot()
     def _refresh_objects(self) -> None:
