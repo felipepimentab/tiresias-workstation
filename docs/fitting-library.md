@@ -27,6 +27,12 @@ provenance. The displayed **Output-stage calibration** page continues to use the
 
 Use **New**, **View**, **Edit**, **Duplicate**, and **Delete**. The Values preview
 shows engineering units; **Provenance & JSON** exposes the complete stored record.
+Audiograms also offer a **Graph** tab: left-ear thresholds use blue crosses and
+a dashed line; right-ear thresholds use red circles and a solid line. Following
+[ASHA audiogram conventions](https://www.asha.org/policy/gl1990-00006/), frequency
+uses a logarithmic Hz axis, hearing level increases downward in dB HL, and one
+octave spans the same distance as 20 dB. The default axes cover 125–8000 Hz and
+−10–120 dB HL and expand to include thresholds outside those ranges.
 Creation is the primary action in the page header; selection actions sit below
 the list and preview. Search filters objects by name and shows a result count.
 On macOS, Command-F focuses search and Command-N opens creation for the current
