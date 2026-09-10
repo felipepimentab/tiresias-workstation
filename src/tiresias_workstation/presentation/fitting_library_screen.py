@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 from tiresias_workstation.adapters.library_store import entry_to_dict
 from tiresias_workstation.application.fitting_library import FittingLibrary
 from tiresias_workstation.domain.fittings import Audiogram
+from tiresias_workstation.presentation.audiogram_graph import AudiogramGraph
 from tiresias_workstation.domain.dsp_contract import DSP_PARAMETERS_BY_ID
 from tiresias_workstation.domain.library import (
     LIBRARY_KINDS, CalibrationBand, DeviceCalibration, LibraryEntry, OutputStageConfiguration,
@@ -508,6 +509,9 @@ class FittingLibraryScreen(QWidget):
         self.details = QPlainTextEdit()
         self.details.setReadOnly(True)
         inspection.addTab(self.details, "Provenance && JSON")
+        self.graph = AudiogramGraph() if kind == "audiograms" else None
+        if self.graph is not None:
+            inspection.addTab(self.graph, "Graph")
         detail_layout.addWidget(inspection)
         splitter.addWidget(detail)
         splitter.setStretchFactor(0, 0)
@@ -652,6 +656,8 @@ class FittingLibraryScreen(QWidget):
     def _selected(self, *_args) -> None:
         """Show object identity, dependencies and inspectable data."""
         entry = self.selected_entry()
+        if self.graph is not None:
+            self.graph.set_audiogram(entry.value if entry is not None else None)
         self.inspection.setVisible(entry is not None)
         self.empty_state.setVisible(entry is None)
         self.object_title.setText(entry.name if entry else "")

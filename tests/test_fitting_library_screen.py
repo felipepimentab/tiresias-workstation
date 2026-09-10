@@ -183,6 +183,23 @@ class LibraryScreenTest(unittest.TestCase):
         self.assertFalse(self.screen.selected_entry().read_only)
         self.assertFalse(self.screen.inspection.isHidden())
 
+    def test_audiogram_graph_tracks_selection_and_clears_filtered_records(self):
+        """Keep the graphical preview aligned with the visible library record."""
+        graph = self.screen.graph
+        self.assertEqual(self.screen.inspection.tabText(2), "Graph")
+        self.screen.inspection.setCurrentWidget(graph)
+        self.screen.search.setText("n7")
+        self.assertEqual(graph._audiogram, self.library.get("audiograms", "N7").value)
+        self.assertFalse(graph.grab().isNull())
+        self.screen.search.setText("nothing matches")
+        self.assertIsNone(graph._audiogram)
+        self.screen.search.clear()
+        self.assertEqual(graph._audiogram, self.screen.selected_entry().value)
+        page = FittingLibraryScreen(self.library, self.controller, kind="targets")
+        self.addCleanup(page.close)
+        self.assertIsNone(page.graph)
+        self.assertEqual(page.inspection.count(), 2)
+
     def test_next_steps_keep_selected_sources_and_publish_saved_results(self):
         """Generate then compile through the actual dialogs with preselected inputs."""
         audio = self.library.duplicate(self.library.get("audiograms", "N7"), "Custom source")
