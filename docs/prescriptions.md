@@ -1,5 +1,11 @@
 # Prescriptions and parameter tables
 
+For current UI instructions, use the [dedicated object pages](fitting-library.md).
+The former Prescriptions page is removed. Board loading now lives exclusively
+on Compiled DSP objects and Output-stage calibration. This document retains
+reference information about bundled assets and the shared transfer pipeline.
+
+
 ## MVP catalog
 
 The MVP contains ten precomputed SigmaStudio parameter tables corresponding to
@@ -41,10 +47,12 @@ any catalog or future fitting engine; it is not coupled to the bundled assets.
 Before the first write, the loader validates the format version and checks that
 every parameter exists on the connected board, has the expected byte count, and
 is writable. It then persists parameters sequentially and reports confirmed
-parameter and byte progress. Firmware currently commits each four-byte LUT
-chunk independently. If a transfer fails, the active parameter may therefore
-be partial; the reported error instructs the user to retry the complete
-prescription.
+parameter and byte progress. Protocol v5 commits each complete parameter in one
+SET. If a transfer fails, earlier parameters remain committed and the active
+parameter is either unchanged or completely committed. A lost response makes
+that outcome uncertain. The reported error instructs the user to retry the
+complete prescription after restoring communication. The 11-parameter
+prescription itself is not atomic.
 
 The current firmware advertises deferred DSP application. A successful load
 means all prescription bytes were confirmed and persisted on the board; live

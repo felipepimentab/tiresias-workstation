@@ -4,10 +4,22 @@ The screen consumes domain snapshots and correlated controller results. It
 never handles characteristic UUIDs, packets, or raw DSP addresses.
 """
 
-from PySide6.QtCore import Qt, Slot
-from PySide6.QtGui import QFontDatabase
+from math import log10
+
+from PySide6.QtCore import QPointF, QRectF, Qt, Slot
+from PySide6.QtGui import (
+    QBrush,
+    QColor,
+    QFontDatabase,
+    QLinearGradient,
+    QPaintEvent,
+    QPainter,
+    QPainterPath,
+    QPen,
+)
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QButtonGroup,
     QFormLayout,
     QFrame,
     QHBoxLayout,
@@ -16,6 +28,8 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QProgressBar,
     QPushButton,
+    QRadioButton,
+    QSplitter,
     QTableWidget,
     QTableWidgetItem,
     QStackedWidget,
@@ -27,12 +41,202 @@ from tiresias_workstation.application.ble_controller import BleController
 from tiresias_workstation.domain.dsp_contract import (
     DSP_BLOCKS_BY_ID,
     DspParameterDefinition,
+    DspParameterId,
+)
+from tiresias_workstation.domain.dsp_values import (
+    decode_sigma_5_23_words,
+    decode_u32_word,
+    encode_u32_word,
 )
 from tiresias_workstation.domain.tiresias import (
     DeviceSession,
     ParameterValue,
     ProtocolCapability,
 )
+
+
+_COMPRESSOR_PARAMETER_IDS = frozenset(range(3, 11))
+_GAIN_PARAMETER_IDS = frozenset(range(11, 15))
+_COMPRESSOR_INPUT_LEVELS_DBFS = (
+    -90.0,
+    -90.0,
+    *tuple(float(value) for value in range(-87, 7, 3)),
+)
+_COMPRESSOR_X_MIN_DBFS = -90.0
+_COMPRESSOR_X_MAX_DBFS = 6.0
+_COMPRESSOR_Y_MIN_DBFS = -113.0
+_COMPRESSOR_Y_MAX_DBFS = 27.0
+
+_EDITOR_EMPTY = 0
+_EDITOR_ADC_SELECT = 1
+_EDITOR_SOURCE_SELECT = 2
+_EDITOR_COMPRESSOR = 3
+_EDITOR_GAIN = 4
+_EDITOR_RAW = 5
+
+
+class CompressorCurveWidget(QWidget):
+    """Paint a lightweight line graph of decoded compressor LUT values."""
+
+    def __init__(self) -> None:
+        """Create an empty graph with a useful minimum inspection size."""
+        super().__init__()
+        self._values: tuple[float, ...] = ()
+        self._points_dbfs: tuple[tuple[float, float], ...] = ()
+        self.setObjectName("compressorCurve")
+        self.setMinimumHeight(210)
+
+    @property
+    def values(self) -> tuple[float, ...]:
+        """Return the currently displayed dimensionless LUT values."""
+        return self._values
+
+    @property
+    def points_dbfs(self) -> tuple[tuple[float, float], ...]:
+        """Return plotted input/output coordinates in dBFS."""
+        return self._points_dbfs
+
+    def set_values(self, values: tuple[float, ...]) -> None:
+        """Replace plotted values without changing their stored DSP bytes.
+
+        Args:
+            values: Dimensionless values decoded from SigmaDSP 5.23 words.
+        """
+        self._values = values
+        self._points_dbfs = tuple(
+            (
+                input_level,
+                (
+                    input_level + 20.0 * log10(linear_gain)
+                    if linear_gain > 0.0
+                    else _COMPRESSOR_Y_MIN_DBFS
+                ),
+            )
+            for input_level, linear_gain in zip(
+                _COMPRESSOR_INPUT_LEVELS_DBFS, values
+            )
+        )
+        self.update()
+
+    def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802
+        """Paint axes, value labels, and the current compressor curve.
+
+        Args:
+            event: Qt paint event describing the invalidated region.
+        """
+        del event
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.fillRect(self.rect(), QColor("#ffffff"))
+
+        plot = QRectF(self.rect()).adjusted(42.0, 12.0, -10.0, -26.0)
+        if plot.width() <= 0 or plot.height() <= 0:
+            return
+
+        label_pen = QPen(QColor("#667382"))
+        grid_pen = QPen(QColor("#c4c9d0"))
+        grid_pen.setWidthF(1.0)
+        for input_level in range(-90, 1, 10):
+            x = self._x_position(plot, float(input_level))
+            painter.setPen(grid_pen)
+            painter.drawLine(QPointF(x, plot.top()), QPointF(x, plot.bottom()))
+            painter.setPen(label_pen)
+            painter.drawText(
+                QRectF(x - 18.0, plot.bottom() + 3.0, 36.0, 18.0),
+                Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
+                str(input_level),
+            )
+
+        for output_level in range(-100, 21, 20):
+            y = self._y_position(plot, float(output_level))
+            painter.setPen(grid_pen)
+            painter.drawLine(QPointF(plot.left(), y), QPointF(plot.right(), y))
+            painter.setPen(label_pen)
+            painter.drawText(
+                QRectF(0.0, y - 9.0, plot.left() - 6.0, 18.0),
+                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+                str(output_level),
+            )
+
+        painter.setPen(label_pen)
+        painter.drawText(
+            QRectF(0.0, plot.bottom() - 9.0, plot.left() - 6.0, 18.0),
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+            "-113",
+        )
+        if not self._points_dbfs:
+            painter.drawText(
+                plot, Qt.AlignmentFlag.AlignCenter, "Read to display curve"
+            )
+            painter.setPen(QPen(QColor("#7f8b99")))
+            painter.drawRect(plot)
+            return
+
+        curve = QPainterPath()
+        for index, (input_level, output_level) in enumerate(self._points_dbfs):
+            x = self._x_position(plot, input_level)
+            y = self._y_position(plot, output_level)
+            point = QPointF(x, y)
+            if index == 0:
+                curve.moveTo(point)
+            else:
+                curve.lineTo(point)
+
+        fill = QPainterPath(curve)
+        last_x = self._x_position(plot, self._points_dbfs[-1][0])
+        first_x = self._x_position(plot, self._points_dbfs[0][0])
+        fill.lineTo(last_x, plot.bottom())
+        fill.lineTo(first_x, plot.bottom())
+        fill.closeSubpath()
+        gradient = QLinearGradient(plot.topLeft(), plot.bottomLeft())
+        gradient.setColorAt(0.0, QColor(92, 151, 230, 35))
+        gradient.setColorAt(1.0, QColor(92, 151, 230, 115))
+        painter.fillPath(fill, QBrush(gradient))
+
+        curve_pen = QPen(QColor("#6f7d8e"))
+        curve_pen.setWidthF(1.25)
+        painter.setPen(curve_pen)
+        painter.drawPath(curve)
+
+        emphasized = frozenset((0, 7, 16, 24, len(self._points_dbfs) - 1))
+        for index, (input_level, output_level) in enumerate(self._points_dbfs):
+            centre = QPointF(
+                self._x_position(plot, input_level),
+                self._y_position(plot, output_level),
+            )
+            if index in emphasized:
+                painter.setPen(QPen(QColor("#233b75"), 1.0))
+                painter.setBrush(QColor("#6b98ef"))
+                painter.drawEllipse(centre, 4.7, 4.7)
+            else:
+                painter.setPen(QPen(QColor("#6f7d8e"), 0.8))
+                painter.setBrush(QColor("#b9c4d1"))
+                painter.drawEllipse(centre, 1.6, 1.6)
+
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.setPen(QPen(QColor("#7f8b99"), 1.0))
+        painter.drawRect(plot)
+
+    @staticmethod
+    def _x_position(plot: QRectF, input_level_dbfs: float) -> float:
+        """Map a compressor input level in dBFS to the graph rectangle."""
+        ratio = (input_level_dbfs - _COMPRESSOR_X_MIN_DBFS) / (
+            _COMPRESSOR_X_MAX_DBFS - _COMPRESSOR_X_MIN_DBFS
+        )
+        return plot.left() + ratio * plot.width()
+
+    @staticmethod
+    def _y_position(plot: QRectF, output_level_dbfs: float) -> float:
+        """Map a compressor output level in dBFS to the graph rectangle."""
+        bounded = min(
+            max(output_level_dbfs, _COMPRESSOR_Y_MIN_DBFS),
+            _COMPRESSOR_Y_MAX_DBFS,
+        )
+        ratio = (bounded - _COMPRESSOR_Y_MIN_DBFS) / (
+            _COMPRESSOR_Y_MAX_DBFS - _COMPRESSOR_Y_MIN_DBFS
+        )
+        return plot.bottom() - ratio * plot.height()
+
 
 class DeviceControlScreen(QWidget):
     """Render device metadata and persistent parameter controls.
@@ -128,17 +332,21 @@ class DeviceControlScreen(QWidget):
         return page
 
     def _build_parameter_page(self) -> QWidget:
-        """Build the fixed-contract table and ID-based controls."""
+        """Build the fixed-contract table and right-side parameter inspector."""
         page = QWidget()
         page.setObjectName("parameterPage")
         layout = QVBoxLayout(page)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(12)
 
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+        splitter.setObjectName("parameterWorkspace")
+        splitter.setChildrenCollapsible(False)
+
         self._parameter_table = QTableWidget(0, 6)
         self._parameter_table.setObjectName("parameterTable")
         self._parameter_table.setHorizontalHeaderLabels(
-            ["ID", "Block", "Parameter", "Access", "Bytes", "Current bytes"]
+            ["ID", "Block", "Parameter", "Access", "Bytes", "Current value"]
         )
         self._parameter_table.setSelectionBehavior(
             QAbstractItemView.SelectionBehavior.SelectRows
@@ -157,45 +365,58 @@ class DeviceControlScreen(QWidget):
         header.setDefaultAlignment(
             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
         )
-        for column in (0, 3, 4):
+        for column in (0, 1, 2, 3, 4):
             header.setSectionResizeMode(column, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(5, QHeaderView.ResizeMode.Interactive)
-        self._parameter_table.setColumnWidth(5, 200)
-        layout.addWidget(self._parameter_table, 1)
+        header.setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)
+        splitter.addWidget(self._parameter_table)
 
         editor = QFrame()
-        editor.setObjectName("parameterEditor")
+        editor.setObjectName("parameterInspector")
+        editor.setMinimumWidth(310)
         editor_layout = QVBoxLayout(editor)
-        editor_layout.setContentsMargins(16, 12, 16, 12)
-        editor_layout.setSpacing(10)
+        editor_layout.setContentsMargins(18, 16, 18, 16)
+        editor_layout.setSpacing(9)
+        inspector_label = QLabel("PARAMETER INSPECTOR")
+        inspector_label.setObjectName("parameterInspectorLabel")
+        editor_layout.addWidget(inspector_label)
         self._selected_parameter = QLabel("Select a DSP parameter")
         self._selected_parameter.setObjectName("selectedParameter")
         self._selected_parameter.setWordWrap(True)
         editor_layout.addWidget(self._selected_parameter)
 
+        self._parameter_details = QLabel(
+            "Choose a row to inspect its value and available controls."
+        )
+        self._parameter_details.setObjectName("parameterDetails")
+        self._parameter_details.setWordWrap(True)
+        editor_layout.addWidget(self._parameter_details)
+
+        self._editor_pages = QStackedWidget()
+        self._editor_pages.setObjectName("parameterEditorPages")
+        self._editor_pages.addWidget(self._build_empty_editor())
+        self._editor_pages.addWidget(self._build_adc_selector_editor())
+        self._editor_pages.addWidget(self._build_source_selector_editor())
+        self._editor_pages.addWidget(self._build_compressor_editor())
+        self._editor_pages.addWidget(self._build_gain_editor())
+        self._editor_pages.addWidget(self._build_raw_editor())
+        editor_layout.addWidget(self._editor_pages, 1)
+        self._raw_editor = self._build_hex_editor("Raw parameter bytes")
+        editor_layout.addWidget(self._raw_editor)
+
         actions = QHBoxLayout()
         actions.setSpacing(8)
-
-        self._value_input = QLineEdit()
-        self._value_input.setObjectName("parameterValueInput")
-        self._value_input.setPlaceholderText("Hex bytes, for example: 00 00 00 01")
-        self._value_input.setMinimumWidth(150)
-        self._value_input.setAccessibleName("Parameter value in hexadecimal bytes")
-        self._value_input.setFont(
-            QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
-        )
-        actions.addWidget(self._value_input, 1)
-
         self._read_button = QPushButton("Read")
         self._read_button.setObjectName("readParameterButton")
-        actions.addWidget(self._read_button)
+        actions.addWidget(self._read_button, 1)
         self._write_button = QPushButton("Persist value")
         self._write_button.setObjectName("writeParameterButton")
-        actions.addWidget(self._write_button)
+        actions.addWidget(self._write_button, 1)
         editor_layout.addLayout(actions)
-        layout.addWidget(editor)
+        splitter.addWidget(editor)
+        splitter.setStretchFactor(0, 3)
+        splitter.setStretchFactor(1, 2)
+        splitter.setSizes([620, 350])
+        layout.addWidget(splitter, 1)
 
         status_row = QHBoxLayout()
         self._progress = QProgressBar()
@@ -214,6 +435,156 @@ class DeviceControlScreen(QWidget):
         status_row.addWidget(self._refresh_button)
         layout.addLayout(status_row)
         return page
+
+    @staticmethod
+    def _build_empty_editor() -> QWidget:
+        """Build the inspector placeholder shown without a selection."""
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(0, 16, 0, 0)
+        prompt = QLabel("Select a parameter from the table.")
+        prompt.setObjectName("parameterEditorPrompt")
+        prompt.setWordWrap(True)
+        layout.addWidget(prompt)
+        layout.addStretch()
+        return page
+
+    def _build_adc_selector_editor(self) -> QWidget:
+        """Build four radio controls for the ADC input selector."""
+        return self._build_selector_editor(
+            DspParameterId.ADC_SELECT,
+            "ADC input",
+            ((0, "ADC 0"), (1, "ADC 1"), (2, "ADC 2"), (3, "ADC 3")),
+        )
+
+    def _build_source_selector_editor(self) -> QWidget:
+        """Build radio controls for digital-versus-ADC source selection."""
+        return self._build_selector_editor(
+            DspParameterId.SOURCE_SELECT,
+            "Processing source",
+            ((0, "Digital input (I2S)"), (1, "Selected ADC input")),
+        )
+
+    def _build_selector_editor(
+        self,
+        parameter_id: DspParameterId,
+        heading: str,
+        choices: tuple[tuple[int, str], ...],
+    ) -> QWidget:
+        """Build one typed selector page backed by an exclusive button group.
+
+        Args:
+            parameter_id: Stable selector parameter identifier.
+            heading: Human-readable control group heading.
+            choices: Numeric values and labels accepted by the DSP switch.
+
+        Returns:
+            Page containing the radio-button choices.
+        """
+        if not hasattr(self, "_selector_groups"):
+            self._selector_groups: dict[int, QButtonGroup] = {}
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(0, 12, 0, 0)
+        layout.setSpacing(9)
+        label = QLabel(heading)
+        label.setProperty("role", "fieldLabel")
+        layout.addWidget(label)
+        group = QButtonGroup(page)
+        group.setExclusive(True)
+        for value, text in choices:
+            button = QRadioButton(text)
+            button.setObjectName(f"parameterSelector{int(parameter_id)}Value{value}")
+            button.setAccessibleDescription(
+                f"Write unsigned 32-bit selector value {value}"
+            )
+            group.addButton(button, value)
+            layout.addWidget(button)
+        self._selector_groups[int(parameter_id)] = group
+        layout.addStretch()
+        return page
+
+    def _build_compressor_editor(self) -> QWidget:
+        """Build the decoded curve and raw-byte editor for compressor LUTs."""
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(0, 8, 0, 0)
+        layout.setSpacing(7)
+        self._curve_summary = QLabel("Read this parameter to display its curve.")
+        self._curve_summary.setObjectName("compressorCurveSummary")
+        self._curve_summary.setWordWrap(True)
+        layout.addWidget(self._curve_summary)
+        self._compressor_curve = CompressorCurveWidget()
+        layout.addWidget(self._compressor_curve, 1)
+        return page
+
+    def _build_gain_editor(self) -> QWidget:
+        """Build numerical linear and decibel displays for one gain word."""
+        page = QWidget()
+        form = QFormLayout(page)
+        form.setContentsMargins(0, 16, 0, 0)
+        form.setHorizontalSpacing(18)
+        form.setVerticalSpacing(12)
+
+        self._gain_linear_value = QLabel("—")
+        self._gain_linear_value.setObjectName("gainLinearValue")
+        self._gain_linear_value.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        linear_label = QLabel("Linear gain")
+        linear_label.setProperty("role", "fieldLabel")
+        form.addRow(linear_label, self._gain_linear_value)
+
+        self._gain_db_value = QLabel("—")
+        self._gain_db_value.setObjectName("gainDecibelValue")
+        self._gain_db_value.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        db_label = QLabel("Gain in dB")
+        db_label.setProperty("role", "fieldLabel")
+        form.addRow(db_label, self._gain_db_value)
+        return page
+
+    def _build_raw_editor(self) -> QWidget:
+        """Build the fallback hexadecimal editor for untyped parameters."""
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(0, 12, 0, 0)
+        note = QLabel(
+            "This parameter has no specialized control. Edit its complete "
+            "byte array in hexadecimal below."
+        )
+        note.setObjectName("rawParameterHelp")
+        note.setWordWrap(True)
+        layout.addWidget(note)
+        layout.addStretch()
+        return page
+
+    def _build_hex_editor(self, heading: str) -> QWidget:
+        """Build the raw-byte input shared by typed parameter views.
+
+        Args:
+            heading: Label displayed above the input on its owning page.
+
+        Returns:
+            Container owning the application-wide parameter byte input.
+        """
+        container = QWidget()
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+        label = QLabel(heading)
+        label.setProperty("role", "fieldLabel")
+        layout.addWidget(label)
+        self._value_input = QLineEdit()
+        self._value_input.setObjectName("parameterValueInput")
+        self._value_input.setPlaceholderText("Hex bytes, for example: 00 00 00 01")
+        self._value_input.setAccessibleName("Parameter value in hexadecimal bytes")
+        self._value_input.setFont(
+            QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
+        )
+        layout.addWidget(self._value_input)
+        return container
 
     def _connect_signals(self) -> None:
         """Connect controller results and parameter user actions."""
@@ -287,16 +658,41 @@ class DeviceControlScreen(QWidget):
         definition = self._selected_definition()
         if definition is None:
             self._selected_parameter.setText("Select a DSP parameter")
+            self._parameter_details.setText(
+                "Choose a row to inspect its value and available controls."
+            )
+            self._editor_pages.setCurrentIndex(_EDITOR_EMPTY)
+            self._value_input.clear()
         else:
             block = DSP_BLOCKS_BY_ID[definition.block_id]
             self._selected_parameter.setText(
                 f"#{definition.parameter_id} · {block.name} · {definition.name}"
             )
-            if definition.writable:
-                current = self._stored_values.get(definition.parameter_id)
-                self._value_input.setText(
-                    current.data.hex(" ").upper() if current is not None else ""
+            access = (
+                "Read, write, and persist" if definition.writable else "Read only"
+            )
+            if self._is_selector(definition):
+                value_type = "Unsigned 32-bit selector"
+                self._editor_pages.setCurrentIndex(
+                    _EDITOR_ADC_SELECT
+                    if definition.parameter_id == DspParameterId.ADC_SELECT
+                    else _EDITOR_SOURCE_SELECT
                 )
+            elif self._is_compressor(definition):
+                value_type = "34 SigmaDSP 5.23 words"
+                self._editor_pages.setCurrentIndex(_EDITOR_COMPRESSOR)
+            elif self._is_gain(definition):
+                value_type = "One SigmaDSP 5.23 linear-gain word"
+                self._editor_pages.setCurrentIndex(_EDITOR_GAIN)
+            else:
+                value_type = "Opaque byte array"
+                self._editor_pages.setCurrentIndex(_EDITOR_RAW)
+            self._parameter_details.setText(
+                f"{definition.byte_count} bytes · {access} · {value_type}"
+            )
+            self._render_selected_value(
+                definition, self._stored_values.get(definition.parameter_id)
+            )
         self._update_actions()
 
     @Slot()
@@ -310,15 +706,23 @@ class DeviceControlScreen(QWidget):
 
     @Slot()
     def _write_selected(self) -> None:
-        """Persist selected opaque bytes after fixed-contract validation."""
+        """Encode the active editor and persist fixed-contract bytes."""
         definition = self._selected_definition()
         if definition is None:
             return
-        try:
-            data = bytes.fromhex(self._value_input.text())
-        except ValueError:
-            self._show_message("Enter parameter bytes as hexadecimal pairs.", True)
-            return
+        if self._is_selector(definition):
+            group = self._selector_groups[int(definition.parameter_id)]
+            selected_value = group.checkedId()
+            if selected_value < 0:
+                self._show_message("Select one of the available switch values.", True)
+                return
+            data = encode_u32_word(selected_value)
+        else:
+            try:
+                data = bytes.fromhex(self._value_input.text())
+            except ValueError:
+                self._show_message("Enter parameter bytes as hexadecimal pairs.", True)
+                return
         if not definition.accepts(data):
             self._show_message(
                 f"Parameter {definition.parameter_id} requires "
@@ -430,25 +834,136 @@ class DeviceControlScreen(QWidget):
             self._parameter_table.selectRow(0)
 
     def _set_parameter_value(self, value: ParameterValue) -> None:
-        """Update the current-byte cell and selected opaque-byte editor."""
+        """Update the table and selected presentation-only value editor."""
         self._stored_values[value.parameter_id] = value
         definition = self._definitions.get(value.parameter_id)
         if definition is None:
             return
         for row in range(self._parameter_table.rowCount()):
             item = self._parameter_table.item(row, 0)
-            if item is not None and item.data(Qt.ItemDataRole.UserRole) == value.parameter_id:
+            if (
+                item is not None
+                and item.data(Qt.ItemDataRole.UserRole) == value.parameter_id
+            ):
                 encoded = value.data.hex(" ").upper()
                 if len(value.data) <= 8:
                     displayed = encoded
                 else:
-                    displayed = f"{len(value.data)} bytes · {encoded[:23]} … {encoded[-23:]}"
+                    displayed = (
+                        f"{len(value.data)} bytes · {encoded[:23]} … "
+                        f"{encoded[-23:]}"
+                    )
                 value_item = self._parameter_table.item(row, 5)
                 value_item.setText(displayed)
                 value_item.setToolTip(encoded)
-                if self._parameter_table.currentRow() == row and definition.writable:
-                    self._value_input.setText(encoded)
+                if self._parameter_table.currentRow() == row:
+                    self._render_selected_value(definition, value)
                 break
+
+    def _render_selected_value(
+        self,
+        definition: DspParameterDefinition,
+        value: ParameterValue | None,
+    ) -> None:
+        """Populate the specialized editor from an unchanged byte payload.
+
+        Args:
+            definition: Metadata for the selected parameter.
+            value: Most recently read or written bytes, if available.
+        """
+        if value is None:
+            self._value_input.clear()
+            if self._is_selector(definition):
+                self._clear_selector(definition.parameter_id)
+            elif self._is_compressor(definition):
+                self._compressor_curve.set_values(())
+                self._curve_summary.setText(
+                    "Read this parameter to display its curve."
+                )
+            elif self._is_gain(definition):
+                self._gain_linear_value.setText("—")
+                self._gain_db_value.setText("—")
+            return
+
+        encoded = value.data.hex(" ").upper()
+        self._value_input.setText(encoded)
+        if self._is_selector(definition):
+            selected_value = decode_u32_word(value.data)
+            group = self._selector_groups[int(definition.parameter_id)]
+            button = group.button(selected_value)
+            if button is None:
+                self._clear_selector(definition.parameter_id)
+                self._parameter_details.setText(
+                    f"{definition.byte_count} bytes · Unsupported stored selector "
+                    f"value {selected_value}"
+                )
+            else:
+                button.setChecked(True)
+            return
+
+        if self._is_compressor(definition):
+            values = decode_sigma_5_23_words(value.data)
+            self._compressor_curve.set_values(values)
+            outputs = tuple(
+                output_level
+                for _input_level, output_level in self._compressor_curve.points_dbfs
+            )
+            self._curve_summary.setText(
+                f"{len(values)} points · input −90 to +6 dBFS · output "
+                f"{min(outputs):.1f} to {max(outputs):.1f} dBFS"
+            )
+            return
+
+        if self._is_gain(definition):
+            linear_gain = decode_sigma_5_23_words(value.data)[0]
+            linear_text, db_text = self._format_gain(linear_gain)
+            self._gain_linear_value.setText(linear_text)
+            self._gain_db_value.setText(db_text)
+
+    def _clear_selector(self, parameter_id: int) -> None:
+        """Clear a radio group so missing or invalid bytes are not misrepresented."""
+        group = self._selector_groups[int(parameter_id)]
+        group.setExclusive(False)
+        for button in group.buttons():
+            button.setChecked(False)
+        group.setExclusive(True)
+
+    @staticmethod
+    def _is_selector(definition: DspParameterDefinition) -> bool:
+        """Return whether a parameter uses one of the typed switch editors."""
+        return definition.parameter_id in (
+            DspParameterId.ADC_SELECT,
+            DspParameterId.SOURCE_SELECT,
+        )
+
+    @staticmethod
+    def _is_compressor(definition: DspParameterDefinition) -> bool:
+        """Return whether a parameter is one of the eight compressor LUTs."""
+        return int(definition.parameter_id) in _COMPRESSOR_PARAMETER_IDS
+
+    @staticmethod
+    def _is_gain(definition: DspParameterDefinition) -> bool:
+        """Return whether a parameter is a phase-compensation or headroom gain."""
+        return int(definition.parameter_id) in _GAIN_PARAMETER_IDS
+
+    @staticmethod
+    def _format_gain(linear_gain: float) -> tuple[str, str]:
+        """Format a dimensionless linear gain and its decibel equivalent.
+
+        Args:
+            linear_gain: Value decoded from one SigmaDSP 5.23 word.
+
+        Returns:
+            Display strings for linear and decibel gain. Zero linear gain is
+            represented as negative infinity dB; negative gain has no real dB
+            equivalent and is reported explicitly.
+        """
+        linear_text = f"{linear_gain:.8g}"
+        if linear_gain > 0.0:
+            return linear_text, f"{20.0 * log10(linear_gain):.2f} dB"
+        if linear_gain == 0.0:
+            return linear_text, "−∞ dB"
+        return linear_text, "Undefined for negative gain"
 
     def _selected_definition(self) -> DspParameterDefinition | None:
         """Return the selected fixed definition by stable ID."""
@@ -475,7 +990,20 @@ class DeviceControlScreen(QWidget):
         self._write_button.setEnabled(
             bool(idle and definition and definition.writable)
         )
-        self._value_input.setVisible(bool(definition and definition.writable))
+        for parameter_id, group in self._selector_groups.items():
+            selected_group = bool(
+                idle
+                and definition
+                and int(definition.parameter_id) == parameter_id
+            )
+            for button in group.buttons():
+                button.setEnabled(selected_group)
+        show_raw = bool(
+            definition
+            and definition.writable
+            and not self._is_selector(definition)
+        )
+        self._raw_editor.setVisible(show_raw)
         self._value_input.setEnabled(self._write_button.isEnabled())
         self._refresh_button.setEnabled(idle)
 

@@ -12,10 +12,13 @@ runs outside the UI thread so the window remains responsive.
 Product requirements, architecture, and the development roadmap are indexed in
 [the project documentation](docs/README.md).
 
-Open **Audiogram fitting** without connecting a board to enter left/right
-thresholds, generate targets and DSP values, save a named prescription, and
-export or manage saved JSON artifacts. See [the fitting documentation](docs/audiogram-fitting.md)
-for data formats, calibration assumptions, storage, and adding another rule.
+Use the dedicated sidebar pages for each data object. **Reference & design**
+contains Audiograms, Prescription targets, and Detector calibrations. **Load to
+board** contains Compiled DSP objects and Output-stage calibration, distinguished
+by blue transfer cards with payload details and loading progress. All objects
+can be managed offline; only the last two types can be loaded to the board.
+The ten standard audiograms and Eval calibration/output defaults are protected;
+duplicate them to customize. See [the object workflow](docs/fitting-library.md).
 
 ## Requirements
 
@@ -47,6 +50,28 @@ Alternatively, run the package as a Python module:
 ```sh
 uv run python -m tiresias_workstation
 ```
+
+## Package for macOS
+
+Build a local app bundle on a Mac with uv installed:
+
+```sh
+./scripts/build_macos.sh
+```
+
+The result is `dist/Tiresias Workstation.app`. Open it from Finder or copy it
+to Applications. Python, Qt, the fitting dependencies and reference data are
+included; the destination Mac does not need Python or uv. The bundle uses the
+default macOS icon from `assets/appIcons/` and includes the Bluetooth permission
+description.
+
+This uses PyInstaller's windowed, one-directory bundle, configured in
+[`tiresias-workstation.spec`](tiresias-workstation.spec). Packaging dependencies
+are kept in the optional `packaging` group. See the
+[PyInstaller spec documentation](https://pyinstaller.org/en/stable/spec-files.html).
+The build targets the architecture of the Python environment used to build it.
+This minimal build uses local ad-hoc signing; Developer ID signing, notarization
+and installer/DMG creation are not included.
 
 ## Manage dependencies
 

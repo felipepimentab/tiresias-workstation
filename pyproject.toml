@@ -31,3 +31,12 @@ requires-dist = [
     "numpy==2.4.6",
     "scipy==1.17.1",
 ]
+
+[dependency-groups]
+packaging = [
+    "pillow>=11,<13",
+    "pyinstaller>=6.11,<7",
+]
+
+[tool.setuptools.package-data]
+"tiresias_workstation.adapters.library_assets" = ["*.json"]

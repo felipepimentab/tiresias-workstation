@@ -7,9 +7,13 @@ import unittest
 from PySide6.QtCore import QObject, Signal
 from PySide6.QtWidgets import (
     QApplication,
+    QFrame,
+    QHeaderView,
+    QLabel,
     QLineEdit,
     QProgressBar,
     QPushButton,
+    QRadioButton,
     QTableWidget,
 )
 
@@ -26,6 +30,9 @@ from tiresias_workstation.domain.fittings import Audiogram
 from test_ble_controller import device_session
 from tiresias_workstation.domain.tiresias import ParameterValue
 from tiresias_workstation.presentation.main_window import MainWindow
+from tiresias_workstation.presentation.device_control_screen import (
+    CompressorCurveWidget,
+)
 from tiresias_workstation.presentation.theme import apply_light_theme
 
 
@@ -91,9 +98,12 @@ class FakeController(QObject):
     def read_parameter(self, parameter_id):
         self.parameter_read_started.emit(parameter_id)
         definition = DSP_PARAMETERS_BY_ID[parameter_id]
-        data = (b"\x00\x80\x00\x00" * ((definition.byte_count + 3) // 4))[
-            : definition.byte_count
-        ]
+        if parameter_id in (1, 2):
+            data = bytes(definition.byte_count)
+        else:
+            data = (b"\x00\x80\x00\x00" * ((definition.byte_count + 3) // 4))[
+                : definition.byte_count
+            ]
         self.parameter_read.emit(ParameterValue(parameter_id, data, 4))
         return True
 
@@ -159,6 +169,7 @@ class DeviceDiscoveryScreenTest(unittest.TestCase):
         table = self.screen.findChild(QTableWidget, "deviceTable")
         connect_button = self.screen.findChild(QPushButton, "connectButton")
 
+        self.assertIsNone(self.screen.findChild(QLabel, "statusBadge"))
         scan_button.click()
         self.assertEqual(table.rowCount(), 1)
         self.assertEqual(table.item(0, 0).text(), "Tiresias DK")
@@ -200,63 +211,142 @@ class DeviceDiscoveryScreenTest(unittest.TestCase):
         self.assertEqual(self.controller.parameter_writes, [(11, b"\x01\x80\x00\x00")])
         self.assertIn("Persisted", control._message.text())
 
+    def test_connection_header_remains_visible_and_shows_device_identity(self):
+        """Keep connection state and basic board details above every page."""
+        self.window.show()
+        self.controller.connection_started.emit(self.controller.device.address)
+        badge = self.window.findChild(QLabel, "connectionHeaderBadge")
+        details = self.window.findChild(QLabel, "connectionHeaderDetails")
+        self.assertEqual(badge.text(), "Connecting…")
+        self.assertEqual(details.text(), self.controller.device.address)
+
+        self.controller.connection_succeeded.emit(self.controller.device.address)
+        self.controller.session_loaded.emit(self.controller.session)
+        self.app.processEvents()
+        self.assertEqual(badge.text(), "Connected")
+        self.assertIn("Tiresias DK", details.text())
+        self.assertIn("Firmware 0.1.0", details.text())
+        self.window.findChild(QPushButton, "parametersNavigationButton").click()
+        self.assertTrue(badge.isVisible())
+
+        self.controller.disconnection_started.emit(self.controller.device.address)
+        self.controller.connection_failed.emit(
+            self.controller.device.address, "Disconnect failed"
+        )
+        self.assertEqual(badge.text(), "Connected")
+        self.assertIn("Tiresias DK", details.text())
+
+        self.controller.disconnected.emit(self.controller.device.address)
+        self.assertEqual(badge.text(), "Not connected")
+
+    def test_parameter_inspector_plots_lut_and_edits_switches(self):
+        """Render typed values beside the table without changing BLE bytes."""
+        self.controller.session_loaded.emit(self.controller.session)
+        control = self.window.device_control_screen
+        table = control.findChild(QTableWidget, "parameterTable")
+        curve = control.findChild(CompressorCurveWidget, "compressorCurve")
+        write_button = control.findChild(QPushButton, "writeParameterButton")
+
+        self.window.show()
+        control.show_parameters()
+        self.app.processEvents()
+        table.selectRow(2)
+        inspector = control.findChild(QFrame, "parameterInspector")
+        self.assertLess(table.geometry().right(), inspector.geometry().left())
+        header = table.horizontalHeader()
+        self.assertEqual(
+            header.sectionResizeMode(1), QHeaderView.ResizeMode.ResizeToContents
+        )
+        self.assertEqual(header.sectionResizeMode(5), QHeaderView.ResizeMode.Stretch)
+        self.assertEqual(len(curve.values), 34)
+        self.assertEqual(curve.values, (1.0,) * 34)
+        self.assertEqual(curve.points_dbfs[0], (-90.0, -90.0))
+        self.assertEqual(curve.points_dbfs[-1], (6.0, 6.0))
+        self.assertIn("34 points", control._curve_summary.text())
+
+        half_gain = b"\x00\x40\x00\x00" * 34
+        self.controller.parameter_read.emit(ParameterValue(3, half_gain, 4))
+        self.assertAlmostEqual(curve.points_dbfs[0][1], -96.0206, places=4)
+        self.assertAlmostEqual(curve.points_dbfs[-1][1], -0.0206, places=4)
+
+        self.controller.parameter_read.emit(
+            ParameterValue(1, b"\x00\x00\x00\x02", 4)
+        )
+        table.selectRow(0)
+        adc_two = control.findChild(QRadioButton, "parameterSelector1Value2")
+        adc_three = control.findChild(QRadioButton, "parameterSelector1Value3")
+        self.assertTrue(adc_two.isChecked())
+        self.assertTrue(control._raw_editor.isHidden())
+        adc_three.click()
+        write_button.click()
+        self.assertEqual(
+            self.controller.parameter_writes[-1], (1, b"\x00\x00\x00\x03")
+        )
+
+        self.controller.parameter_read.emit(
+            ParameterValue(2, b"\x00\x00\x00\x01", 5)
+        )
+        table.selectRow(1)
+        adc_source = control.findChild(QRadioButton, "parameterSelector2Value1")
+        self.assertTrue(adc_source.isChecked())
+
+        self.controller.parameter_read.emit(
+            ParameterValue(11, b"\x00\x40\x00\x00", 5)
+        )
+        table.selectRow(10)
+        linear_value = control.findChild(QLabel, "gainLinearValue")
+        db_value = control.findChild(QLabel, "gainDecibelValue")
+        self.assertEqual(linear_value.text(), "0.5")
+        self.assertEqual(db_value.text(), "-6.02 dB")
+        self.assertEqual(table.item(10, 5).text(), "00 40 00 00")
+        for row in range(11, 14):
+            self.assertEqual(table.item(row, 5).text(), "00 80 00 00")
+
+        self.controller.parameter_read.emit(ParameterValue(14, bytes(4), 5))
+        table.selectRow(13)
+        self.assertEqual(linear_value.text(), "0")
+        self.assertEqual(db_value.text(), "−∞ dB")
+
     def test_closing_window_shuts_down_controller(self):
         """Ensure closing the owner window shuts down its controller."""
         self.window.close()
         self.assertTrue(self.controller.shutdown_called)
 
-    def test_selects_and_loads_a_standard_prescription(self):
-        """Navigate to the catalog and submit the selected profile."""
-        self.controller.connection_succeeded.emit(self.controller.device.address)
-        self.controller.session_loaded.emit(self.controller.session)
-        navigation = self.window.findChild(
-            QPushButton, "prescriptionsNavigationButton"
-        )
+    def test_object_navigation_replaces_overlapping_workflows(self):
+        """Expose each object once and group the two board-loadable kinds."""
+        for obsolete in ("prescriptionsNavigationButton", "fittingNavigationButton", "libraryNavigationButton"):
+            self.assertIsNone(self.window.findChild(QPushButton, obsolete))
+        for kind in ("audiograms", "targets", "calibrations", "compiled", "outputs"):
+            button = self.window.findChild(QPushButton, f"{kind}NavigationButton")
+            self.assertTrue(button.isEnabled())
+            button.click()
+            self.assertIs(self.window._content_stack.currentWidget(), self.window.object_screens[kind])
+            self.assertEqual(bool(button.property("boardLoadable")), kind in ("compiled", "outputs"))
+        self.controller.disconnected.emit(self.controller.device.address)
+        self.assertIs(self.window._content_stack.currentWidget(), self.window.object_screens["outputs"])
 
-        navigation.click()
-        self.app.processEvents()
-        screen = self.window.prescription_screen
-        table = screen.findChild(QTableWidget, "prescriptionTable")
-        load_button = screen.findChild(QPushButton, "loadPrescriptionButton")
-        progress = screen.findChild(QProgressBar, "prescriptionProgress")
-
-        self.assertEqual(table.rowCount(), 10)
-        self.assertEqual(table.item(0, 0).text(), "N1 standard audiogram")
-        self.assertEqual(table.item(9, 0).text(), "S3 standard audiogram")
-        table.selectRow(1)
-        load_button.click()
-
-        self.assertEqual(
-            [entry.profile_id for entry in self.controller.prescription_loads],
-            ["N2"],
-        )
-        self.assertEqual(progress.maximum(), 1100)
-        self.assertEqual(progress.value(), 1100)
-        self.assertIn("N2 loaded", screen._message.text())
-
-    def test_local_fitting_is_available_offline_and_refreshes_loading_catalog(self):
-        """Reuse the normal board-loading flow for a custom saved prescription."""
-        navigation = self.window.findChild(QPushButton, "fittingNavigationButton")
-        self.assertTrue(navigation.isEnabled())
-        navigation.click()
-        fitting = self.window.audiogram_fitting_screen
+    def test_generated_objects_share_the_board_loading_page(self):
+        """Load a saved compiled object from its dedicated page only."""
         artifact = self.window._prescription_workbench.generate(
             Audiogram((250.0, 500.0), (10.0, 20.0), (15.0, 25.0)),
-            rule_id="camfit-compressive-cec1", name="My custom fitting", ear="left",
+            rule_id="camfit-compressive-cec1", name="My compiled fitting", ear="left",
         )
-        fitting._show_artifact(artifact)
-        fitting._save_current()
-        table = self.window.prescription_screen.findChild(
-            QTableWidget, "prescriptionTable"
-        )
-        self.assertEqual(table.rowCount(), 11)
-        self.assertEqual(table.item(10, 0).text(), "My custom fitting")
+        self.window._prescription_workbench.save(artifact)
+        page = self.window.object_screens["compiled"]
+        page.search.setText("unrelated search")
+        entry = page.library.get("compiled", artifact.artifact_id)
+        self.window.object_screens["targets"].object_created.emit(entry)
+        self.assertIs(self.window._content_stack.currentWidget(), page)
+        self.assertEqual(page.selected_entry().item_id, entry.item_id)
+        self.assertEqual(page.search.text(), "")
+        self.assertEqual(page.items.count(), 1)
+        self.assertFalse(page.load_button.isEnabled())
         self.controller.session_loaded.emit(self.controller.session)
-        table.selectRow(10)
-        self.window.prescription_screen.findChild(
-            QPushButton, "loadPrescriptionButton"
-        ).click()
+        self.window.findChild(QPushButton, "compiledNavigationButton").click()
+        page.load_button.click()
         self.assertEqual(self.controller.prescription_loads, [artifact.prescription])
+        self.assertEqual(page.progress.value(), 1100)
+        self.assertIn("11 parameters", page.status.text())
 
 
 if __name__ == "__main__":

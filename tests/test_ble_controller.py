@@ -35,11 +35,11 @@ def device_session():
     return DeviceSession(
         DeviceInformation("Tiresias", "Tiresias DK", "1", "A", "0.1.0"),
         ProtocolInformation(
-            4,
+            5,
             0,
             ProtocolCapability(15),
-            12,
-            16,
+            188,
+            192,
             DSP_PARAMETER_CONTRACT_CRC32,
             2,
             3,

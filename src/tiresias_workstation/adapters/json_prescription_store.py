@@ -123,27 +123,8 @@ def artifact_to_dict(artifact: GeneratedPrescription) -> dict[str, Any]:
     }
 
 
-def artifact_from_dict(value: dict[str, Any]) -> GeneratedPrescription:
-    """Validate and rebuild a generated prescription from JSON data.
-
-    Args:
-        value: Parsed artifact envelope.
-
-    Returns:
-        Validated domain artifact.  Constructing the nested prescription also
-        verifies its canonical SHA-256 digest and DSP parameter sizes.
-
-    Raises:
-        ValueError: If the format identity or version is unsupported.
-        KeyError: If a required field is absent.
-        TypeError: If nested data has an incompatible type.
-    """
-    if value.get("format") != ARTIFACT_FORMAT:
-        raise ValueError("Unsupported generated-prescription format.")
-    if value.get("version") != ARTIFACT_VERSION:
-        raise ValueError("Unsupported generated-prescription version.")
-
-    target_value = value["prescription_target"]
+def target_from_dict(target_value: dict[str, Any]) -> PrescriptionTarget:
+    """Rebuild a standalone target with its exact input and rule metadata."""
     audiogram_value = target_value["audiogram"]
     audiogram = Audiogram(
         frequencies_hz=_float_tuple(audiogram_value["frequencies_hz"]),
@@ -174,6 +155,31 @@ def artifact_from_dict(value: dict[str, Any]) -> GeneratedPrescription:
         ),
         endpoint_policy=str(target_value["endpoint_policy"]),
     )
+
+    return target
+
+
+def artifact_from_dict(value: dict[str, Any]) -> GeneratedPrescription:
+    """Validate and rebuild a generated prescription from JSON data.
+
+    Args:
+        value: Parsed artifact envelope.
+
+    Returns:
+        Validated domain artifact.  Constructing the nested prescription also
+        verifies its canonical SHA-256 digest and DSP parameter sizes.
+
+    Raises:
+        ValueError: If the format identity or version is unsupported.
+        KeyError: If a required field is absent.
+        TypeError: If nested data has an incompatible type.
+    """
+    if value.get("format") != ARTIFACT_FORMAT:
+        raise ValueError("Unsupported generated-prescription format.")
+    if value.get("version") != ARTIFACT_VERSION:
+        raise ValueError("Unsupported generated-prescription version.")
+
+    target = target_from_dict(value["prescription_target"])
 
     mapping_value = value["dsp_mapping"]
     selected_ear = str(mapping_value["selected_ear"])
@@ -232,7 +238,7 @@ def artifact_from_dict(value: dict[str, Any]) -> GeneratedPrescription:
     artifact_id = str(value["artifact_id"])
     if prescription.profile_id != artifact_id:
         raise ValueError("Artifact and DSP prescription identifiers do not match.")
-    if audiogram_to_dict(audiogram) != value["audiogram"]:
+    if audiogram_to_dict(target.audiogram) != value["audiogram"]:
         raise ValueError("Top-level and target audiograms do not match.")
     return GeneratedPrescription(
         artifact_id=artifact_id,

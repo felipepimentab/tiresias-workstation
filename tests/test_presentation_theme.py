@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
 
 from test_device_discovery_screen import FakeController
 from test_generated_prescriptions import N1_FREQUENCIES_HZ, N1_LEVELS_DB_HL
+from tiresias_workstation.presentation.fitting_library_screen import LibraryEditor
 from tiresias_workstation.application.default_prescriptions import (
     create_default_prescription_services,
 )
@@ -106,9 +107,9 @@ class PresentationThemeTests(unittest.TestCase):
                     self.assertEqual(
                         self.app.palette().color(group, role), palette.color(group, role)
                     )
-        fitting = self.window.audiogram_fitting_screen
-        name = fitting.findChild(QLineEdit, "customPrescriptionName")
-        rule = fitting.findChild(QComboBox, "prescriptionRuleSelector")
+        editor = LibraryEditor(self.workbench.library, "targets", parent=self.window)
+        self.addCleanup(editor.close)
+        name, rule = editor.name, editor.rule
         for widget in (name, rule.view(), QMenu(self.window)):
             widget.ensurePolished()
             self.assertGreater(widget.palette().base().color().lightness(), 230)
@@ -123,26 +124,27 @@ class PresentationThemeTests(unittest.TestCase):
         self.controller.connect(self.controller.device.address)
         self._capture("03-board-information.png")
         self._navigate("parametersNavigationButton")
+        self.window.device_control_screen._parameter_table.selectRow(2)
         self._capture("04-dsp-parameters.png")
-        self._navigate("prescriptionsNavigationButton")
-        self._capture("05-prescriptions.png")
-        self._navigate("fittingNavigationButton")
-        self._capture("06-fitting-empty.png")
+        self.window.device_control_screen._parameter_table.selectRow(10)
+        self._capture("04b-dsp-gain.png")
+        self._navigate("compiledNavigationButton")
+        self._capture("05-compiled-empty.png")
         artifact = self.workbench.generate(
             Audiogram(N1_FREQUENCIES_HZ, N1_LEVELS_DB_HL, N1_LEVELS_DB_HL),
             rule_id="camfit-compressive-cec1", name="Listening room", ear="left",
         )
-        fitting = self.window.audiogram_fitting_screen
-        fitting._show_artifact(artifact)
-        fitting._save_current()
-        self._capture("07-fitting-saved.png")
+        self.workbench.save(artifact)
+        self.window._refresh_objects()
+        self._capture("06-compiled-saved.png")
 
         for width, height in ((1180, 820), (960, 680)):
             self.window.resize(width, height)
             for destination in (
                 "devicesNavigationButton", "boardNavigationButton",
-                "parametersNavigationButton", "prescriptionsNavigationButton",
-                "fittingNavigationButton",
+                "parametersNavigationButton", "audiogramsNavigationButton",
+                "targetsNavigationButton", "calibrationsNavigationButton",
+                "compiledNavigationButton", "outputsNavigationButton",
             ):
                 self._navigate(destination)
                 with self.subTest(size=(width, height), page=destination):
@@ -165,16 +167,15 @@ class PresentationThemeTests(unittest.TestCase):
 
     def test_error_focus_combo_popup_and_confirmation_remain_light(self):
         """Cover transient widgets and keyboard focus, not just idle pages."""
-        self._navigate("fittingNavigationButton")
-        fitting = self.window.audiogram_fitting_screen
-        name = fitting.findChild(QLineEdit, "customPrescriptionName")
-        name.setFocus(Qt.FocusReason.TabFocusReason)
-        fitting._show_message("Enter numeric thresholds for both ears.", error=True)
-        self.app.processEvents()
-        message = fitting.findChild(QLabel, "fittingMessage")
-        self.assertEqual(message.palette().windowText().color().name(), "#b42318")
-        self._capture("08-fitting-validation.png")
-        rule = fitting.findChild(QComboBox, "prescriptionRuleSelector")
+        self._navigate("targetsNavigationButton")
+        editor = LibraryEditor(self.workbench.library, "targets", parent=self.window)
+        self.addCleanup(editor.close)
+        editor.show()
+        editor.name.setFocus(Qt.FocusReason.TabFocusReason)
+        editor._save()
+        self.assertTrue(editor.message.text())
+        self._capture("08-target-validation.png", editor)
+        rule = editor.rule
         rule.showPopup()
         self._capture("09-rule-popup.png", rule.view().window())
         rule.hidePopup()

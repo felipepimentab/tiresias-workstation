@@ -14,6 +14,9 @@ import json
 import math
 from typing import Any
 
+from tiresias_workstation.domain.library import DeviceCalibration
+from tiresias_workstation.adapters.library_defaults import default_calibration
+
 from tiresias_workstation.domain.dsp_contract import DspParameterId
 from tiresias_workstation.domain.fittings import (
     DspMapping,
@@ -49,21 +52,19 @@ COMPRESSOR_PARAMETER_IDS = tuple(
 )
 
 
-_EQUIVALENT_LEVELS = (45.0, 65.0, 85.0, 95.0)
-_DETECTOR_CALIBRATIONS: tuple[dict[str, Any], ...] = (
-    {"detector": (-40.162501, -35.139349, -17.13609, -7.175152), "low_floor": True},
-    {"detector": (-59.565154, -39.632526, -19.897802, -9.792284), "low_floor": False},
-    {"detector": (-59.895879, -40.076409, -20.197084, -10.253938), "low_floor": False},
-    {"detector": (-59.91426, -40.153535, -20.267644, -10.261084), "low_floor": False},
-    {"detector": (-59.890692, -40.153297, -20.204077, -10.334106), "low_floor": False},
-    {"detector": (-59.785201, -40.152233, -20.181457, -10.159175), "low_floor": False},
-    {"detector": (-59.792207, -40.0, -20.085683, -10.089514), "low_floor": False},
-    {"detector": (-59.298983, -39.290631, -19.567023, -9.396888), "low_floor": False},
-)
 
 
 class SigmaDspMapper:
     """Convert either ear of a fitting target to the monaural board contract."""
+
+    def __init__(self, calibration: DeviceCalibration | None = None) -> None:
+        """Select independent measured detector data for this compilation."""
+        self.calibration = calibration or default_calibration()
+        self._calibrations = tuple({
+            "detector": band.detector_dbfs,
+            "equivalent": band.equivalent_input_db_spl,
+            "low_floor": band.hold_low,
+        } for band in self.calibration.bands)
 
     def map(
         self,
@@ -89,7 +90,8 @@ class SigmaDspMapper:
                 bands or cannot be represented by positive 5.23 gains.
         """
         gains = target.gains(ear)
-        if target.band_centres_hz[:8] != ACTIVE_BAND_CENTRES_HZ:
+        if (target.band_centres_hz[:8] != ACTIVE_BAND_CENTRES_HZ
+                or tuple(b.frequency_hz for b in self.calibration.bands) != ACTIVE_BAND_CENTRES_HZ):
             raise ValueError(
                 "The Tiresias detector calibration requires its eight active band "
                 "centres. Resample a different rule's filterbank before DSP mapping."
@@ -100,13 +102,13 @@ class SigmaDspMapper:
                 self._equivalent_spl_from_detector(point, calibration)
                 for point in DETECTOR_POINTS_DBFS
             )
-            for calibration in _DETECTOR_CALIBRATIONS
+            for calibration in self._calibrations
         )
         desired = [
             [self._interpolate(level, levels, gain_curve) for level in band_levels]
             for band_levels, gain_curve in zip(mapped_levels, gains[:8])
         ]
-        for band_index, calibration in enumerate(_DETECTOR_CALIBRATIONS):
+        for band_index, calibration in enumerate(self._calibrations):
             checkpoint_detector = [
                 self._detector_from_equivalent_spl(level, calibration)
                 for level in VALIDATION_LEVELS_DB_SPL
@@ -170,7 +172,7 @@ class SigmaDspMapper:
             ),
         )
         mapping = DspMapping(
-            calibration_id=CALIBRATION_ID,
+            calibration_id=self.calibration.calibration_id,
             ear=ear,
             detector_points_dbfs=DETECTOR_POINTS_DBFS,
             mapped_input_levels_db_spl_by_band=mapped_levels,
@@ -230,7 +232,7 @@ class SigmaDspMapper:
         return cls._piecewise(
             detector_dbfs,
             tuple(calibration["detector"]),
-            _EQUIVALENT_LEVELS,
+            tuple(calibration["equivalent"]),
             hold_low=bool(calibration["low_floor"]),
         )
 
@@ -241,7 +243,7 @@ class SigmaDspMapper:
         """Invert the measured detector calibration at a fitting checkpoint."""
         return cls._piecewise(
             equivalent_spl,
-            _EQUIVALENT_LEVELS,
+            tuple(calibration["equivalent"]),
             tuple(calibration["detector"]),
             hold_low=bool(calibration["low_floor"]),
         )

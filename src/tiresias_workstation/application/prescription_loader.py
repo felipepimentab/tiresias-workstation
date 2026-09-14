@@ -90,8 +90,8 @@ class PrescriptionLoader:
         The preflight finishes before the first board write, preventing known
         format or contract incompatibilities from creating a partial profile.
         Writes are then serialized in prescription order. A runtime failure can
-        still leave already-confirmed parameters and part of the active
-        multi-chunk parameter persisted. The raised error reports the confirmed
+        still leave already-confirmed parameters persisted. The active parameter
+        is either unchanged or completely committed, even if its response is lost. The raised error reports the confirmed
         count and directs the caller to retry the complete prescription.
 
         Args:
@@ -129,7 +129,7 @@ class PrescriptionLoader:
                     prescription.profile_id,
                     (str(error).strip() or error.__class__.__name__)
                     + "; retry the complete prescription because the active "
-                    "parameter may be partially persisted",
+                    "parameter may have committed completely; earlier parameters remain committed",
                     completed_parameters=completed - 1,
                     total_parameters=total_parameters,
                     parameter_id=int(parameter.parameter_id),

@@ -61,7 +61,6 @@ class DeviceDiscoveryScreen(QWidget):
         page_layout.setContentsMargins(36, 32, 36, 30)
         page_layout.setSpacing(16)
 
-        heading_row = QHBoxLayout()
         heading_copy = QVBoxLayout()
         heading_copy.setSpacing(3)
 
@@ -75,14 +74,7 @@ class DeviceDiscoveryScreen(QWidget):
         subtitle.setObjectName("pageSubtitle")
         subtitle.setWordWrap(True)
         heading_copy.addWidget(subtitle)
-        heading_row.addLayout(heading_copy, 1)
-
-        self._status_badge = QLabel()
-        self._status_badge.setObjectName("statusBadge")
-        self._status_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._status_badge.setMinimumWidth(112)
-        heading_row.addWidget(self._status_badge, 0, Qt.AlignmentFlag.AlignTop)
-        page_layout.addLayout(heading_row)
+        page_layout.addLayout(heading_copy)
 
         toolbar = QHBoxLayout()
         toolbar.setSpacing(10)
@@ -179,8 +171,6 @@ class DeviceDiscoveryScreen(QWidget):
             QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum
         )
         page_layout.addWidget(self._message)
-
-        self._set_connection_status("Not connected", "idle")
 
     def _connect_signals(self) -> None:
         """Connect user actions and controller events to presentation slots."""
@@ -313,7 +303,6 @@ class DeviceDiscoveryScreen(QWidget):
         self._busy = True
         device = self._devices.get(address)
         name = self._display_name(device) if device is not None else address
-        self._set_connection_status("Connecting…", "working")
         self._show_message(f"Attempting to connect to {name}…")
         self._update_controls()
 
@@ -328,7 +317,6 @@ class DeviceDiscoveryScreen(QWidget):
         self._connected_address = address
         device = self._devices.get(address)
         name = self._display_name(device) if device is not None else address
-        self._set_connection_status("Connected", "connected")
         self._show_message(f"Connected to {name}.")
         self._update_controls()
 
@@ -341,10 +329,6 @@ class DeviceDiscoveryScreen(QWidget):
             message: User-displayable error from the transport.
         """
         self._busy = False
-        if self._connected_address == address:
-            self._set_connection_status("Connected", "connected")
-        else:
-            self._set_connection_status("Not connected", "idle")
         self._show_message(f"Connection operation failed: {message}", True)
         self._update_controls()
 
@@ -356,7 +340,6 @@ class DeviceDiscoveryScreen(QWidget):
             address: Platform identifier of the connected device.
         """
         self._busy = True
-        self._set_connection_status("Disconnecting…", "working")
         self._show_message(f"Closing the connection to {address}…")
         self._update_controls()
 
@@ -370,7 +353,6 @@ class DeviceDiscoveryScreen(QWidget):
         was_expected = self._busy
         self._busy = False
         self._connected_address = None
-        self._set_connection_status("Not connected", "idle")
         self._show_message(
             (
                 "Disconnected."
@@ -468,23 +450,6 @@ class DeviceDiscoveryScreen(QWidget):
         )
         self._disconnect_button.setVisible(is_connected)
         self._disconnect_button.setEnabled(is_connected and not self._busy)
-
-    def _set_connection_status(self, text: str, state: str) -> None:
-        """Update badge text and its dynamic stylesheet state.
-
-        Args:
-            text: Human-readable status label.
-            state: Stylesheet state: ``idle``, ``working``, or ``connected``.
-        """
-        indicator = {
-            "idle": "○",
-            "working": "●",
-            "connected": "●",
-        }[state]
-        self._status_badge.setText(f"{indicator}  {text}")
-        self._status_badge.setProperty("connectionState", state)
-        self._status_badge.style().unpolish(self._status_badge)
-        self._status_badge.style().polish(self._status_badge)
 
     def _show_message(self, text: str, is_error: bool = False) -> None:
         """Show contextual guidance or an error below the controls.

@@ -84,7 +84,7 @@ QWidget { color: #242426; }
 QWidget:disabled { color: #929298; }
 QMainWindow, QDialog, QMessageBox, #applicationShell,
 #deviceDiscoveryScreen, #deviceControlScreen, #prescriptionScreen,
-#audiogramFittingScreen, #boardInformationPage, #parameterPage {
+#audiogramFittingScreen, #boardInformationPage, #parameterPage, #mainContent {
     background: #ffffff;
 }
 QLabel { background: transparent; }
@@ -94,7 +94,10 @@ QLabel { background: transparent; }
 #pageSubtitle, #controlSummary, #prescriptionSubtitle, #fittingSubtitle,
 #resultSummary, #messageLabel, #parameterMessage, #prescriptionMessage,
 #selectedPrescriptionDetails, #prescriptionProgressCount, #resultDetails,
-#fittingMessage { color: #68686e; font-size: 12px; }
+#fittingMessage, #connectionHeaderDetails, #parameterDetails,
+#compressorCurveSummary, #rawParameterHelp, #parameterEditorPrompt {
+    color: #68686e; font-size: 12px;
+}
 #messageLabel[error="true"], #parameterMessage[error="true"],
 #prescriptionMessage[error="true"], #fittingMessage[error="true"] {
     color: #b42318;
@@ -103,6 +106,7 @@ QLabel { background: transparent; }
     color: #68686e; font-size: 12px;
 }
 #selectionDetail, #selectedParameter { font-weight: 500; }
+#gainLinearValue, #gainDecibelValue { font-size: 18px; font-weight: 600; }
 #selectedPrescriptionTitle, #fittingCardTitle, #savedPrescriptionTitle {
     font-size: 14px; font-weight: 600;
 }
@@ -130,18 +134,39 @@ QLabel { background: transparent; }
     padding: 14px 10px 4px;
 }
 
-#deviceCard, #actionCard, #parameterEditor, #selectedPrescriptionCard,
+#connectionHeader {
+    background: #fafafa; border: none; border-bottom: 1px solid #e7e7e8;
+}
+#connectionHeaderLabel, #parameterInspectorLabel {
+    color: #808086; font-size: 10px; font-weight: 600;
+}
+#connectionHeaderBadge {
+    background: #f0f0f1; color: #68686e; border-radius: 10px;
+    font-size: 11px; padding: 5px 10px; min-width: 88px;
+}
+#connectionHeaderBadge[connectionState="working"] {
+    color: #925600; background: #fff1d6;
+}
+#connectionHeaderBadge[connectionState="connected"] {
+    color: #237346; background: #e7f3ea;
+}
+#connectionHeaderBadge[connectionState="error"] {
+    color: #b42318; background: #fcebea;
+}
+
+#deviceCard, #actionCard, #parameterInspector, #selectedPrescriptionCard,
 #fittingCard {
     background: #ffffff; border: 1px solid #e2e2e4; border-radius: 9px;
 }
 #controlPages { border: none; background: #ffffff; }
 #boardInformationPage { border: 1px solid #e2e2e4; border-radius: 9px; }
-#statusBadge, #prescriptionConnectionBadge {
+#compressorCurve {
+    background: #ffffff; border: 1px solid #e2e2e4; border-radius: 6px;
+}
+#prescriptionConnectionBadge {
     background: #f3f3f4; color: #68686e; border-radius: 10px;
     font-size: 11px; padding: 5px 10px;
 }
-#statusBadge[connectionState="working"] { color: #925600; background: #fff6e5; }
-#statusBadge[connectionState="connected"] { color: #237346; background: #edf6ef; }
 
 QPushButton {
     background: #ffffff; color: #303034; border: 1px solid #d8d8db;
@@ -179,6 +204,8 @@ QLineEdit {
 }
 QLineEdit:focus { border-color: #80b2ed; }
 QLineEdit:disabled { background: #f7f7f8; color: #929298; border-color: #e7e7e9; }
+QRadioButton { spacing: 8px; min-height: 25px; }
+QRadioButton::indicator { width: 15px; height: 15px; }
 /* Keep native combo-box arrows, popup behavior and platform scrollbars. */
 QComboBox { min-height: 30px; padding: 0 6px; }
 QComboBox QAbstractItemView {
@@ -211,4 +238,40 @@ QProgressBar {
 QProgressBar::chunk { background: #727278; border-radius: 3px; }
 QSplitter::handle { background: #ffffff; }
 QSplitter::handle:hover { background: #f1f1f2; }
+
+#libraryObjectTitle { font-size: 18px; font-weight: 600; }
+#libraryMetadata { color: #68686e; font-size: 12px; }
+#libraryEmptyState { color: #68686e; font-size: 14px; padding: 24px; }
+#libraryObjectList {
+    background: #fafafa; border: 1px solid #e7e7e8; border-radius: 8px;
+    padding: 6px; outline: none;
+}
+#libraryObjectList::item { padding: 10px 8px; border-radius: 5px; }
+#libraryObjectList::item:hover { background: #f0f0f1; }
+#libraryObjectList::item:selected { background: #e8e8e8; color: #202022; }
+#libraryObjectList::item:focus { border: 1px solid #80b2ed; }
+#libraryInspection::pane { border: none; padding-top: 8px; }
+#libraryInspection QTabBar::tab {
+    background: transparent; color: #68686e; padding: 8px 12px;
+    border-bottom: 2px solid transparent;
+}
+#libraryInspection QTabBar::tab:selected { color: #242426; border-bottom-color: #68686e; }
+#newLibraryObjectButton { background: #272729; color: white; border-color: #272729; }
+#newLibraryObjectButton:hover { background: #424244; }
+#newLibraryObjectButton:focus { border-color: #80b2ed; }
+#deleteLibraryObjectButton:enabled { color: #b42318; }
+#libraryToast {
+    background: #343438; color: #ffffff; border: 1px solid #535359;
+    border-radius: 8px; padding: 14px; font-size: 13px;
+}
+#referenceObjectRole { color: #68686e; font-size: 10px; font-weight: 600; }
+#boardObjectRole { color: #245a91; font-size: 10px; font-weight: 700; }
+#boardTransferCard {
+    background: #edf4fc; border: 1px solid #bdd2eb; border-radius: 8px;
+}
+#boardTransferCard QLabel { background: transparent; border: none; color: #24486e; }
+#loadObjectToBoardButton { background: #285e94; color: #ffffff; border-color: #285e94; }
+#loadObjectToBoardButton:hover:enabled { background: #214f7d; }
+#loadObjectToBoardButton:disabled { background: #e0e9f3; color: #667d97; border-color: #c6d4e5; }
+#boardTransferCard QProgressBar::chunk { background: #285e94; }
 """

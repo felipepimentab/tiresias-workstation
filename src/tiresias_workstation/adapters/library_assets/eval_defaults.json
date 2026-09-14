@@ -1,0 +1,781 @@
+{
+  "eval_revision": "309a644599c4455050583ec56da9f8092b1243a9",
+  "audiograms": [
+    {
+      "profile": "N1",
+      "category": "Very mild",
+      "hl_250": "10",
+      "hl_375": "10",
+      "hl_500": "10",
+      "hl_750": "10",
+      "hl_1000": "10",
+      "hl_1500": "10",
+      "hl_2000": "15",
+      "hl_3000": "20",
+      "hl_4000": "30",
+      "hl_6000": "40"
+    },
+    {
+      "profile": "N2",
+      "category": "Mild",
+      "hl_250": "20",
+      "hl_375": "20",
+      "hl_500": "20",
+      "hl_750": "22.5",
+      "hl_1000": "25",
+      "hl_1500": "30",
+      "hl_2000": "35",
+      "hl_3000": "40",
+      "hl_4000": "45",
+      "hl_6000": "50"
+    },
+    {
+      "profile": "N3",
+      "category": "Moderate",
+      "hl_250": "35",
+      "hl_375": "35",
+      "hl_500": "35",
+      "hl_750": "35",
+      "hl_1000": "40",
+      "hl_1500": "45",
+      "hl_2000": "50",
+      "hl_3000": "55",
+      "hl_4000": "60",
+      "hl_6000": "65"
+    },
+    {
+      "profile": "N4",
+      "category": "Moderate/severe",
+      "hl_250": "55",
+      "hl_375": "55",
+      "hl_500": "55",
+      "hl_750": "55",
+      "hl_1000": "55",
+      "hl_1500": "60",
+      "hl_2000": "65",
+      "hl_3000": "70",
+      "hl_4000": "75",
+      "hl_6000": "80"
+    },
+    {
+      "profile": "N5",
+      "category": "Severe",
+      "hl_250": "65",
+      "hl_375": "67.5",
+      "hl_500": "70",
+      "hl_750": "72.5",
+      "hl_1000": "75",
+      "hl_1500": "80",
+      "hl_2000": "80",
+      "hl_3000": "80",
+      "hl_4000": "80",
+      "hl_6000": "80"
+    },
+    {
+      "profile": "N6",
+      "category": "Severe",
+      "hl_250": "75",
+      "hl_375": "77.5",
+      "hl_500": "80",
+      "hl_750": "82.5",
+      "hl_1000": "85",
+      "hl_1500": "90",
+      "hl_2000": "90",
+      "hl_3000": "95",
+      "hl_4000": "100",
+      "hl_6000": "100"
+    },
+    {
+      "profile": "N7",
+      "category": "Profound",
+      "hl_250": "90",
+      "hl_375": "92.5",
+      "hl_500": "95",
+      "hl_750": "100",
+      "hl_1000": "105",
+      "hl_1500": "105",
+      "hl_2000": "105",
+      "hl_3000": "105",
+      "hl_4000": "105",
+      "hl_6000": "105"
+    },
+    {
+      "profile": "S1",
+      "category": "Very mild",
+      "hl_250": "10",
+      "hl_375": "10",
+      "hl_500": "10",
+      "hl_750": "10",
+      "hl_1000": "10",
+      "hl_1500": "10",
+      "hl_2000": "15",
+      "hl_3000": "30",
+      "hl_4000": "55",
+      "hl_6000": "70"
+    },
+    {
+      "profile": "S2",
+      "category": "Mild",
+      "hl_250": "20",
+      "hl_375": "20",
+      "hl_500": "20",
+      "hl_750": "22.5",
+      "hl_1000": "25",
+      "hl_1500": "35",
+      "hl_2000": "55",
+      "hl_3000": "75",
+      "hl_4000": "95",
+      "hl_6000": "95"
+    },
+    {
+      "profile": "S3",
+      "category": "Moderate/severe",
+      "hl_250": "30",
+      "hl_375": "30",
+      "hl_500": "35",
+      "hl_750": "47.5",
+      "hl_1000": "60",
+      "hl_1500": "70",
+      "hl_2000": "75",
+      "hl_3000": "80",
+      "hl_4000": "80",
+      "hl_6000": "85"
+    }
+  ],
+  "calibration": {
+    "calibration_id": "ADAU1787_EVAL_Tiresias_2026",
+    "scope": "Shared detector calibration for the current ADAU1787 EVAL SigmaStudio topology; reusable by N1-N10.",
+    "status": "campaign_complete_with_b1_low_level_floor",
+    "sigma_export_xml": "../tiresias-eval-export/tiresias-eval.xml",
+    "output_directory": "../scripts/generated/detector-identification",
+    "compressor_cells": [
+      "compbank.Compressor-B1",
+      "compbank.Compressor-B2",
+      "compbank.Compressor-B3",
+      "compbank.Compressor-B4",
+      "compbank.Compressor-B5",
+      "compbank.Compressor-B6",
+      "compbank.Compressor-B7",
+      "compbank.Compressor-B8"
+    ],
+    "bias_cells": [
+      "phasecomp.Gain1",
+      "phasecomp.Gain1_2",
+      "phasecomp.Gain1_3"
+    ],
+    "sample_rate_hz": 48000.0,
+    "equivalent_0_dbfs_db_spl": 100.0,
+    "rew_dac_offset_from_equivalent_spl_db": -104.85,
+    "validation_levels_db_spl": [
+      45.0,
+      65.0,
+      85.0,
+      95.0
+    ],
+    "band_test_frequencies_hz": [
+      177.0,
+      297.0,
+      500.0,
+      841.0,
+      1414.0,
+      2378.0,
+      4000.0,
+      6727.0
+    ],
+    "settling_time_seconds": 2.0,
+    "measurement_method": "stationary sine; record only the spectral component at the test frequency",
+    "legacy_b1_low_level_detector_calibration": {
+      "status": "superseded by the common B1-B8 campaign; retained for historical traceability",
+      "detector_dbfs": [
+        -40.04,
+        -38.2,
+        -32.68
+      ],
+      "equivalent_input_level_db_spl": [
+        45.0,
+        55.0,
+        65.0
+      ],
+      "below_lowest_detector_policy": "hold gain at 45 dB SPL",
+      "above_highest_detector_policy": "use nominal detector + 100 dB SPL mapping"
+    },
+    "measured_band_calibration": {
+      "B1": {
+        "band": 1,
+        "frequency_hz": 177.0,
+        "equivalent_input_level_db_spl": [
+          45.0,
+          65.0,
+          85.0,
+          95.0
+        ],
+        "rew_dac_output_dbv": [
+          -59.85,
+          -39.85,
+          -19.85,
+          -9.85
+        ],
+        "unity_component_dbv": [
+          -60.23,
+          -40.24,
+          -20.24,
+          -10.24
+        ],
+        "identification_component_dbv": [
+          -60.2,
+          -41.12,
+          -24.06,
+          -15.45
+        ],
+        "insertion_db": [
+          0.03,
+          -0.88,
+          -3.82,
+          -5.21
+        ],
+        "identification_gain_db": [
+          0.040625,
+          -1.215163,
+          -5.715977,
+          -8.206212
+        ],
+        "detector_dbfs": [
+          -40.162501,
+          -35.139349,
+          -17.13609,
+          -7.175152
+        ],
+        "detector_minus_electrical_input_db": [
+          19.687499,
+          4.710651,
+          2.71391,
+          2.674848
+        ],
+        "linear_fit_detector_from_spl": {
+          "slope_dbfs_per_db_spl": 0.672794474,
+          "intercept_dbfs": -73.680872503,
+          "rms_residual_db": 3.338203093
+        },
+        "high_level_slope_dbfs_per_db_spl": 0.996093804,
+        "step_slopes_dbfs_per_db_spl": [
+          0.2511576,
+          0.900162948,
+          0.996093804
+        ],
+        "low_level_floor_detected": true,
+        "below_lowest_detector_policy": "hold equivalent SPL at 45 dB because lower levels are not distinguishable",
+        "above_highest_detector_policy": "linear extrapolation from the two highest measured checkpoints",
+        "diagnostic": "piso/contamina\u00e7\u00e3o em n\u00edvel baixo"
+      },
+      "B2": {
+        "band": 2,
+        "frequency_hz": 297.0,
+        "equivalent_input_level_db_spl": [
+          45.0,
+          65.0,
+          85.0,
+          95.0
+        ],
+        "rew_dac_output_dbv": [
+          -59.85,
+          -39.85,
+          -19.85,
+          -9.85
+        ],
+        "unity_component_dbv": [
+          -60.24,
+          -40.25,
+          -20.25,
+          -10.25
+        ],
+        "identification_component_dbv": [
+          -57.24,
+          -40.3,
+          -22.63,
+          -13.56
+        ],
+        "insertion_db": [
+          3.0,
+          -0.05,
+          -2.38,
+          -3.31
+        ],
+        "identification_gain_db": [
+          4.891289,
+          -0.091868,
+          -5.02555,
+          -7.551929
+        ],
+        "detector_dbfs": [
+          -59.565154,
+          -39.632526,
+          -19.897802,
+          -9.792284
+        ],
+        "detector_minus_electrical_input_db": [
+          0.284846,
+          0.217474,
+          -0.047802,
+          0.057716
+        ],
+        "linear_fit_detector_from_spl": {
+          "slope_dbfs_per_db_spl": 0.994058842,
+          "intercept_dbfs": -104.291207484,
+          "rms_residual_db": 0.0640087
+        },
+        "high_level_slope_dbfs_per_db_spl": 1.010551796,
+        "step_slopes_dbfs_per_db_spl": [
+          0.996631407,
+          0.986736234,
+          1.010551796
+        ],
+        "low_level_floor_detected": false,
+        "below_lowest_detector_policy": "linear extrapolation from the two lowest measured checkpoints",
+        "above_highest_detector_policy": "linear extrapolation from the two highest measured checkpoints",
+        "diagnostic": "mapeamento aproximadamente linear"
+      },
+      "B3": {
+        "band": 3,
+        "frequency_hz": 500.0,
+        "equivalent_input_level_db_spl": [
+          45.0,
+          65.0,
+          85.0,
+          95.0
+        ],
+        "rew_dac_output_dbv": [
+          -59.85,
+          -39.85,
+          -19.85,
+          -9.85
+        ],
+        "unity_component_dbv": [
+          -60.25,
+          -40.25,
+          -20.25,
+          -10.25
+        ],
+        "identification_component_dbv": [
+          -57.3,
+          -40.24,
+          -22.49,
+          -13.36
+        ],
+        "insertion_db": [
+          2.95,
+          0.01,
+          -2.24,
+          -3.11
+        ],
+        "identification_gain_db": [
+          4.97397,
+          0.019102,
+          -4.950729,
+          -7.436515
+        ],
+        "detector_dbfs": [
+          -59.895879,
+          -40.076409,
+          -20.197084,
+          -10.253938
+        ],
+        "detector_minus_electrical_input_db": [
+          -0.045879,
+          -0.226409,
+          -0.347084,
+          -0.403938
+        ],
+        "linear_fit_detector_from_spl": {
+          "slope_dbfs_per_db_spl": 0.992903449,
+          "intercept_dbfs": -104.591327708,
+          "rms_residual_db": 0.015212833
+        },
+        "high_level_slope_dbfs_per_db_spl": 0.994314563,
+        "step_slopes_dbfs_per_db_spl": [
+          0.990973506,
+          0.99396626,
+          0.994314563
+        ],
+        "low_level_floor_detected": false,
+        "below_lowest_detector_policy": "linear extrapolation from the two lowest measured checkpoints",
+        "above_highest_detector_policy": "linear extrapolation from the two highest measured checkpoints",
+        "diagnostic": "mapeamento aproximadamente linear"
+      },
+      "B4": {
+        "band": 4,
+        "frequency_hz": 841.0,
+        "equivalent_input_level_db_spl": [
+          45.0,
+          65.0,
+          85.0,
+          95.0
+        ],
+        "rew_dac_output_dbv": [
+          -59.85,
+          -39.85,
+          -19.85,
+          -9.85
+        ],
+        "unity_component_dbv": [
+          -60.25,
+          -40.25,
+          -20.25,
+          -10.25
+        ],
+        "identification_component_dbv": [
+          -57.31,
+          -40.23,
+          -22.47,
+          -13.34
+        ],
+        "insertion_db": [
+          2.94,
+          0.02,
+          -2.22,
+          -3.09
+        ],
+        "identification_gain_db": [
+          4.978565,
+          0.038384,
+          -4.933089,
+          -7.434729
+        ],
+        "detector_dbfs": [
+          -59.91426,
+          -40.153535,
+          -20.267644,
+          -10.261084
+        ],
+        "detector_minus_electrical_input_db": [
+          -0.06426,
+          -0.303535,
+          -0.417644,
+          -0.411084
+        ],
+        "linear_fit_detector_from_spl": {
+          "slope_dbfs_per_db_spl": 0.992931345,
+          "intercept_dbfs": -104.636653329,
+          "rms_residual_db": 0.044896634
+        },
+        "high_level_slope_dbfs_per_db_spl": 1.000656037,
+        "step_slopes_dbfs_per_db_spl": [
+          0.988036229,
+          0.994294571,
+          1.000656037
+        ],
+        "low_level_floor_detected": false,
+        "below_lowest_detector_policy": "linear extrapolation from the two lowest measured checkpoints",
+        "above_highest_detector_policy": "linear extrapolation from the two highest measured checkpoints",
+        "diagnostic": "mapeamento aproximadamente linear"
+      },
+      "B5": {
+        "band": 5,
+        "frequency_hz": 1414.0,
+        "equivalent_input_level_db_spl": [
+          45.0,
+          65.0,
+          85.0,
+          95.0
+        ],
+        "rew_dac_output_dbv": [
+          -59.85,
+          -39.85,
+          -19.85,
+          -9.85
+        ],
+        "unity_component_dbv": [
+          -60.25,
+          -40.25,
+          -20.25,
+          -10.25
+        ],
+        "identification_component_dbv": [
+          -57.31,
+          -40.23,
+          -22.48,
+          -13.34
+        ],
+        "insertion_db": [
+          2.94,
+          0.02,
+          -2.23,
+          -3.09
+        ],
+        "identification_gain_db": [
+          4.972673,
+          0.038324,
+          -4.948981,
+          -7.416474
+        ],
+        "detector_dbfs": [
+          -59.890692,
+          -40.153297,
+          -20.204077,
+          -10.334106
+        ],
+        "detector_minus_electrical_input_db": [
+          -0.040692,
+          -0.303297,
+          -0.354077,
+          -0.484106
+        ],
+        "linear_fit_detector_from_spl": {
+          "slope_dbfs_per_db_spl": 0.99191555,
+          "intercept_dbfs": -104.559420386,
+          "rms_residual_db": 0.043553079
+        },
+        "high_level_slope_dbfs_per_db_spl": 0.986997075,
+        "step_slopes_dbfs_per_db_spl": [
+          0.986869755,
+          0.997461041,
+          0.986997075
+        ],
+        "low_level_floor_detected": false,
+        "below_lowest_detector_policy": "linear extrapolation from the two lowest measured checkpoints",
+        "above_highest_detector_policy": "linear extrapolation from the two highest measured checkpoints",
+        "diagnostic": "mapeamento aproximadamente linear"
+      },
+      "B6": {
+        "band": 6,
+        "frequency_hz": 2378.0,
+        "equivalent_input_level_db_spl": [
+          45.0,
+          65.0,
+          85.0,
+          95.0
+        ],
+        "rew_dac_output_dbv": [
+          -59.85,
+          -39.85,
+          -19.85,
+          -9.85
+        ],
+        "unity_component_dbv": [
+          -60.25,
+          -40.26,
+          -20.25,
+          -10.25
+        ],
+        "identification_component_dbv": [
+          -57.31,
+          -40.24,
+          -22.5,
+          -13.38
+        ],
+        "insertion_db": [
+          2.94,
+          0.02,
+          -2.25,
+          -3.13
+        ],
+        "identification_gain_db": [
+          4.9463,
+          0.038058,
+          -4.954636,
+          -7.460206
+        ],
+        "detector_dbfs": [
+          -59.785201,
+          -40.152233,
+          -20.181457,
+          -10.159175
+        ],
+        "detector_minus_electrical_input_db": [
+          0.064799,
+          -0.302233,
+          -0.331457,
+          -0.309175
+        ],
+        "linear_fit_detector_from_spl": {
+          "slope_dbfs_per_db_spl": 0.992803469,
+          "intercept_dbfs": -104.547768109,
+          "rms_residual_db": 0.089241985
+        },
+        "high_level_slope_dbfs_per_db_spl": 1.002228133,
+        "step_slopes_dbfs_per_db_spl": [
+          0.981648365,
+          0.998538838,
+          1.002228133
+        ],
+        "low_level_floor_detected": false,
+        "below_lowest_detector_policy": "linear extrapolation from the two lowest measured checkpoints",
+        "above_highest_detector_policy": "linear extrapolation from the two highest measured checkpoints",
+        "diagnostic": "mapeamento aproximadamente linear"
+      },
+      "B7": {
+        "band": 7,
+        "frequency_hz": 4000.0,
+        "equivalent_input_level_db_spl": [
+          45.0,
+          65.0,
+          85.0,
+          95.0
+        ],
+        "rew_dac_output_dbv": [
+          -59.85,
+          -39.85,
+          -19.85,
+          -9.85
+        ],
+        "unity_component_dbv": [
+          -60.26,
+          -40.26,
+          -20.26,
+          -10.26
+        ],
+        "identification_component_dbv": [
+          -57.27,
+          -40.26,
+          -22.57,
+          -13.47
+        ],
+        "insertion_db": [
+          2.99,
+          0.0,
+          -2.31,
+          -3.21
+        ],
+        "identification_gain_db": [
+          4.948052,
+          0.0,
+          -4.978579,
+          -7.477622
+        ],
+        "detector_dbfs": [
+          -59.792207,
+          -40.0,
+          -20.085683,
+          -10.089514
+        ],
+        "detector_minus_electrical_input_db": [
+          0.057793,
+          -0.15,
+          -0.235683,
+          -0.239514
+        ],
+        "linear_fit_detector_from_spl": {
+          "slope_dbfs_per_db_spl": 0.994034297,
+          "intercept_dbfs": -104.559337331,
+          "rms_residual_db": 0.037986899
+        },
+        "high_level_slope_dbfs_per_db_spl": 0.999616896,
+        "step_slopes_dbfs_per_db_spl": [
+          0.989610331,
+          0.995715865,
+          0.999616896
+        ],
+        "low_level_floor_detected": false,
+        "below_lowest_detector_policy": "linear extrapolation from the two lowest measured checkpoints",
+        "above_highest_detector_policy": "linear extrapolation from the two highest measured checkpoints",
+        "diagnostic": "mapeamento aproximadamente linear"
+      },
+      "B8": {
+        "band": 8,
+        "frequency_hz": 6727.0,
+        "equivalent_input_level_db_spl": [
+          45.0,
+          65.0,
+          85.0,
+          95.0
+        ],
+        "rew_dac_output_dbv": [
+          -59.85,
+          -39.85,
+          -19.85,
+          -9.85
+        ],
+        "unity_component_dbv": [
+          -60.27,
+          -40.27,
+          -20.27,
+          -10.27
+        ],
+        "identification_component_dbv": [
+          -57.22,
+          -40.37,
+          -22.79,
+          -13.77
+        ],
+        "insertion_db": [
+          3.05,
+          -0.1,
+          -2.52,
+          -3.5
+        ],
+        "identification_gain_db": [
+          4.824746,
+          -0.177342,
+          -5.108244,
+          -7.650778
+        ],
+        "detector_dbfs": [
+          -59.298983,
+          -39.290631,
+          -19.567023,
+          -9.396888
+        ],
+        "detector_minus_electrical_input_db": [
+          0.551017,
+          0.559369,
+          0.282977,
+          0.453112
+        ],
+        "linear_fit_detector_from_spl": {
+          "slope_dbfs_per_db_spl": 0.996192539,
+          "intercept_dbfs": -104.11234046,
+          "rms_residual_db": 0.083888997
+        },
+        "high_level_slope_dbfs_per_db_spl": 1.017013411,
+        "step_slopes_dbfs_per_db_spl": [
+          1.000417578,
+          0.986180442,
+          1.017013411
+        ],
+        "low_level_floor_detected": false,
+        "below_lowest_detector_policy": "linear extrapolation from the two lowest measured checkpoints",
+        "above_highest_detector_policy": "linear extrapolation from the two highest measured checkpoints",
+        "diagnostic": "mapeamento aproximadamente linear"
+      }
+    },
+    "measurement_source": {
+      "workbook": "tiresias-eval-sigma/rew/detector-calibration/ADAU1787_EVAL_detector_calibration.xlsx",
+      "workbook_sha256": "c5c8091f4fde80002e7168e2bcfa0e3de7b8ada7fa02ea40e2b55218386bf51c",
+      "workbook_origin": "Apple Numbers export to Microsoft Excel 2007+ XLSX"
+    },
+    "measurement_conditions": {
+      "capture_interface": "Focusrite Scarlett 18i8",
+      "scarlett_input_full_scale_vrms": 1.0,
+      "scarlett_input_gain_condition": "Input gain set and REW calibrated so that 1 Vrms corresponds to 0 dBFS full scale",
+      "rew_input_display_unit": "dBV",
+      "dut": "ADAU1787 EVAL",
+      "power_and_routing": "current SigmaStudio EVAL bench configuration"
+    },
+    "analysis_method": {
+      "identification_lut_gain_db": "-0.25 * detector_dbfs - 10",
+      "inverse_detector_dbfs": "-4 * (identification_gain_db + 10)",
+      "filterbank_recombination_model": "complex target-band plus complex remainder from the SigmaStudio export",
+      "script": "experiments/prescriptions/scripts/analyze_sigma_detector_calibration.py"
+    },
+    "quality_control": {
+      "complete_measurements": 32,
+      "expected_measurements": 32,
+      "maximum_difference_from_workbook_cached_analysis_db": 0.0,
+      "unity_tracking_error_db": {
+        "mean": -0.4021875,
+        "minimum": -0.42,
+        "maximum": -0.38,
+        "population_standard_deviation": 0.009264979
+      },
+      "flags": [
+        "B1 detector has a low-level floor/nonlinear region near -40 dBFS",
+        "B7 at 65 dB SPL produced exactly 0.00 dB measured insertion; the inversion remains well-defined"
+      ]
+    }
+  },
+  "softclip_nominal_hex": "00800000008000000080000000800000008000000080000000800000008000000080000000800000008000000080000000800000008000000080000000800000008000000080000000800000008000000080000000800000007f93880060c6ca004969990037b067002a3e9600200bb400184f25001270bd000dfd0c000a2adb000732ae0005188400039b8700028dcf0001cedc000147ae0000e7fb0000a43b000074440000524f00003a450000294100001d34",
+  "sources": {
+    "experiments/prescriptions/data/bisgaard_2010_audiograms.csv": "7ea575a49f0400d5581e949b6b4333d1cd3f99726d43d019830f57897c1bc11a",
+    "tiresias-eval-sigma/config/detector_calibration_eval.json": "ff7519d9dbd5cbbcb940d6b5e23a648977f5829aea428309824d121924df908c",
+    "tiresias-eval-sigma/scripts/softclip/softclip_apply_cec1.sss": "a8cc9218b4f06991601fed3c1c27ca28c9071f7dc39c17454c08daa7dfe6f294"
+  }
+}
