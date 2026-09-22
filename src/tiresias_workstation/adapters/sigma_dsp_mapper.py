@@ -77,7 +77,7 @@ class SigmaDspMapper:
         """Generate calibrated LUT and phase-compensation parameter values.
 
         Args:
-            target: Exact rule output for both ears.
+            target: Band-grid rule output for both ears.
             artifact_id: Stable local identifier used as the board profile ID.
             name: User-facing custom prescription name.
             ear: Ear selected for the current monaural DSP path.
@@ -86,7 +86,7 @@ class SigmaDspMapper:
             Transport-ready prescription and inspectable conversion metadata.
 
         Raises:
-            ValueError: If the target does not provide the eight active CAMFIT
+            ValueError: If the target does not provide the eight active DSP
                 bands or cannot be represented by positive 5.23 gains.
         """
         gains = target.gains(ear)

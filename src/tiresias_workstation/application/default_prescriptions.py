@@ -15,6 +15,7 @@ from tiresias_workstation.adapters.prescription_catalogs import (
     CompositePrescriptionCatalog,
 )
 from tiresias_workstation.adapters.pyclarity_camfit import PyClarityCamfitRule
+from tiresias_workstation.adapters.pyclarity_nalr import PyClarityNalrRule
 from tiresias_workstation.adapters.sigma_dsp_mapper import SigmaDspMapper
 from tiresias_workstation.application.prescription_workbench import (
     PrescriptionWorkbench,
@@ -34,11 +35,12 @@ def create_default_prescription_services(
         Workbench for fitting operations and combined bundled/local catalog.
     """
     store = JsonPrescriptionStore(directory)
-    library = FittingLibrary(LibraryStore(directory / "library"), (PyClarityCamfitRule(),))
+    rules = (PyClarityCamfitRule(), PyClarityNalrRule())
+    library = FittingLibrary(LibraryStore(directory / "library"), rules)
     for artifact in store.list():
         library.import_legacy(artifact)
     workbench = PrescriptionWorkbench(
-        (PyClarityCamfitRule(),),
+        rules,
         SigmaDspMapper(),
         store,
         library=library,

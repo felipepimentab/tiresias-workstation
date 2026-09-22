@@ -9,6 +9,11 @@ from __future__ import annotations
 
 from typing import Any
 
+from tiresias_workstation.adapters.fitting_target_grid import (
+    FILTERBANK_CENTRES_HZ,
+    FILTERBANK_EDGES_HZ,
+    INPUT_LEVELS_DB_SPL,
+)
 from tiresias_workstation.domain.fittings import (
     Audiogram,
     PrescriptionRuleMetadata,
@@ -17,31 +22,7 @@ from tiresias_workstation.domain.fittings import (
 
 
 PYCLARITY_REVISION = "9df6486fb0bddc7619b3b99f1b3a5c72c109a3ec"
-FILTERBANK_CENTRES_HZ = (
-    177.0,
-    297.0,
-    500.0,
-    841.0,
-    1414.0,
-    2378.0,
-    4000.0,
-    6727.0,
-    11314.0,
-)
-FILTERBANK_EDGES_HZ = (
-    0.0,
-    229.2793,
-    385.357,
-    648.4597,
-    1090.5,
-    1833.7,
-    3084.2,
-    5187.3,
-    8724.1,
-    22050.0,
-)
 NOISE_GATE_LEVELS_DB_SPL = (38.0, 38.0, 36.0, 37.0, 32.0, 26.0, 23.0, 22.0, 8.0)
-INPUT_LEVELS_DB_SPL = tuple(float(level) for level in range(-10, 111))
 
 
 class PyClarityUnavailableError(RuntimeError):
