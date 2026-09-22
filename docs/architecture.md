@@ -47,7 +47,7 @@ Bleak, pyClarity, or a particular board protocol.
 - **DSP contract:** fixed block and parameter names, IDs, word counts, and flags.
 - **Prescription catalogs:** validate the ten immutable MVP tables and locally
   generated JSON artifacts behind one catalog interface.
-- **Fitting rules:** adapt pyClarity CAMFIT or future rules such as NAL-NL2 to
+- **Fitting rules:** adapt pyClarity CAMFIT and Clarity NAL-R to
   a common, hardware-independent `PrescriptionTarget`.
 - **DSP mapping:** converts a selected target ear through a versioned detector
   calibration into the fixed SigmaDSP parameter contract.

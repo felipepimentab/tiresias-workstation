@@ -68,7 +68,9 @@ SigmaDSP parameter values:
 Audiogram -> prescription rule -> prescription target -> DSP mapping -> parameter bytes
 ```
 
-The first rule is the compressive CEC1 CAMFIT implementation from pyClarity.
+The available rules are compressive CEC1 CAMFIT and a band-target adaptation
+of Clarity's level-independent NAL-R formula. NAL-R is compiled to the fixed
+board bands rather than loaded as Clarity's FIR filter.
 The full audiogram, target curves, calibrated mapping, and final parameter
 bytes are saved together as versioned JSON. See
 [Audiogram fitting and local prescriptions](audiogram-fitting.md) for the data

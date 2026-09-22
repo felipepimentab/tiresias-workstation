@@ -37,7 +37,9 @@ The workstation runs as one Python desktop process.
 Bluetooth stack on macOS, Windows, and Linux. A pinned
 [pyClarity](https://github.com/claritychallenge/clarity) adapter provides
 [CAMFIT](https://github.com/claritychallenge/clarity/blob/main/clarity/enhancer/gha/gainrule_camfit.py)
-target generation, and the application stores its data as local JSON files.
+target generation. A separate adapter derives fixed-band targets from
+[NAL-R](https://github.com/claritychallenge/clarity/blob/main/clarity/enhancer/nalr.py).
+The application stores its data as local JSON files.
 
 The code separates the interface, the operations it coordinates, the fitting
 data models, and the adapters for external libraries and the board protocol.
@@ -56,7 +58,7 @@ complete. Each thread has a specific role:
   connections, parameter reads and writes, and board loads. It stays alive
   while the window is open so Bleak objects remain on the event loop that owns
   them.
-- **Fitting worker threads** run CAMFIT generation and DSP compilation through
+- **Fitting worker threads** run prescription generation and DSP compilation through
   a Qt thread pool. These calculations need no board connection, and each
   editor runs at most one at a time.
 

@@ -21,7 +21,8 @@ The application shall:
 - Validate the board's custom-service protocol, state, and fixed DSP contract.
 - Read fixed DSP parameters and persist supported opaque byte arrays by stable ID.
 - Select and transfer any of the ten bundled standard-audiogram prescriptions.
-- Create a CAMFIT target from a two-ear audiogram through pinned pyClarity.
+- Create CAMFIT or NAL-R targets from a two-ear audiogram using the pinned
+  Clarity implementation and a common target interface.
 - Inspect, export, save, list, and delete locally generated prescriptions.
 - Convert one target ear to calibrated SigmaDSP parameter values.
 - Report correlated operation progress, completion, and actionable errors.

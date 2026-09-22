@@ -11,15 +11,15 @@ For the meaning, units, creation, and dependencies of each data object, see
 
 ## End-to-end flow
 
-The Audiogram fitting page implements the same CAMFIT prescription path used
-to create the validated assets in `tiresias-eval`, while keeping every
-transformation explicit:
+The current UI uses the five object pages. Its rule selection offers CAMFIT
+and NAL-R while keeping every transformation explicit. The retained Audiogram
+fitting API uses the same rules:
 
 ```text
 two-ear audiogram
         |
         v
-selectable prescription rule (CAMFIT through pyClarity)
+selectable prescription rule (CAMFIT or NAL-R)
         |
         v
 full prescription target (2 ears x 9 bands x 121 levels)
@@ -68,7 +68,7 @@ board parameter contract. `PrescriptionWorkbench` indexes implementations by
 stable `rule_id`, which allows another rule to be registered without changing
 the remaining pipeline.
 
-The first adapter is `PyClarityCamfitRule`. It calls `get_gaintable` from the
+`PyClarityCamfitRule` calls `get_gaintable` from the
 pinned pyClarity commit
 `9df6486fb0bddc7619b3b99f1b3a5c72c109a3ec`, exactly like
 `tiresias-eval/experiments/prescriptions/scripts/generate_camfit_prescriptions.py`.
@@ -100,6 +100,26 @@ The 45/65/85 dB gains shown in the UI are only a compact preview.
 An all-zero ear follows pyClarity's explicit unity-gain special case: it does
 **not** retain the 100 dB SPL limiter. Neither this target ceiling nor the
 engineering calibration is a guarantee of safe acoustic output from a device.
+
+`PyClarityNalrRule` follows the [pinned Clarity NAL-R formula](https://github.com/claritychallenge/clarity/blob/9df6486fb0bddc7619b3b99f1b3a5c72c109a3ec/clarity/enhancer/nalr.py).
+It resamples each ear's thresholds to 250, 500, 1000, 2000, 4000, and 6000 Hz
+on Clarity's log-frequency audiogram axis. It then computes Clarity's six
+nonnegative insertion gains, including the high-loss branch and the unity
+special case, and linearly interpolates them in frequency at the nine existing
+fitting-band centres. Every gain is constant over the existing -10 to 110 dB
+SPL input grid. Thus no audiogram, target, JSON, or board-parameter format
+changes are needed. Rule metadata records both the pinned Clarity revision and
+the workstation's band-target adaptation version.
+
+Clarity's `NALR.build` produces a linear-phase FIR filter. The workstation
+stores its prescribed frequency gains as a target and compiles the first eight
+bands to compressor LUTs; it does not store or run that FIR. The ninth target
+band records Clarity's constant high-frequency extension, but the current
+board mapper does not compile that band. The result is a band-based
+approximation of the Clarity FIR response, not an identical filter. NAL-R is
+level-independent and does not provide the CAMFIT 100 dB SPL output ceiling;
+output-stage configuration remains a separate responsibility. The timing
+values in the target describe the fixed DSP program, not NAL-R parameters.
 
 ## Stage 3: DSP mapping
 
