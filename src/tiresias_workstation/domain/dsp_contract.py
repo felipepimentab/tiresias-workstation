@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from enum import IntEnum, IntFlag
 
 
-DSP_PARAMETER_CONTRACT_CRC32 = 0x7E8EB66C
+DSP_PARAMETER_CONTRACT_CRC32 = 0x0056062D
 
 
 class DspBlockId(IntEnum):
@@ -129,7 +129,7 @@ DSP_PARAMETERS = (
         DspBlockId.SOURCE_SELECT,
         "Selection",
         4,
-        DspParameterFlag.WRITABLE,
+        DspParameterFlag.NONE,
     ),
     DspParameterDefinition(
         DspParameterId.BAND_1_COMPRESSOR_LUT,

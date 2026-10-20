@@ -31,6 +31,60 @@ class DeviceState(IntEnum):
     ERROR = 4
 
 
+class BoardCommand(IntEnum):
+    """Predefined board operations accepted by the system-command service."""
+
+    ENABLE_BROADCAST = 1
+    DISABLE_BROADCAST = 2
+    SELECT_LOCAL = 3
+    SELECT_BROADCAST = 4
+    SLEEP = 5
+
+
+class DeviceControllerState(IntEnum):
+    """Device Controller lifecycle values in the system-status snapshot."""
+
+    OFF = 0
+    INITIALIZING = 1
+    OPERATIONAL = 2
+    LOW_POWER = 3
+    FAULT = 4
+    SUSPENDING = 5
+
+
+class AudioStreamingState(IntEnum):
+    """Broadcast-receiver lifecycle values in the system-status snapshot."""
+
+    DISABLED = 0
+    IDLE = 1
+    SCANNING = 2
+    PA_SYNCED = 3
+    BIS_SYNCING = 4
+    STREAMING = 5
+    RECOVERING = 6
+    ERROR = 7
+
+
+class CodecControllerState(IntEnum):
+    """Codec Controller lifecycle values in the system-status snapshot."""
+
+    OFF = 0
+    INITIALIZING = 1
+    LOCAL_ONLY = 2
+    BROADCAST_ONLY = 3
+    ERROR = 4
+
+
+@dataclass(frozen=True, slots=True)
+class SystemStatus:
+    """The four state-machine values published by the board."""
+
+    device: DeviceControllerState
+    control: DeviceState
+    streaming: AudioStreamingState
+    codec: CodecControllerState
+
+
 class StatusFlag(IntFlag):
     """Device status flags published by the custom service."""
 
@@ -99,6 +153,7 @@ class DeviceSession:
     protocol: ProtocolInformation
     status: DeviceStatus
     parameters: tuple[DspParameterDefinition, ...]
+    system_status: SystemStatus | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -130,6 +185,12 @@ class TiresiasClient(Protocol):
 
     async def write_parameter(self, parameter_id: int, data: bytes) -> ParameterValue:
         """Persist one writable byte array and return its revision."""
+
+    async def watch_system_status(self, on_status) -> None:
+        """Subscribe to system-state snapshots and emit the initial value."""
+
+    async def send_board_command(self, command: BoardCommand) -> None:
+        """Request one predefined board operation through GATT."""
 
 
 class ProtocolError(RuntimeError):

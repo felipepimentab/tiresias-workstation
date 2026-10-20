@@ -18,6 +18,8 @@ from tiresias_workstation.domain.dsp_contract import (
     DSP_PARAMETERS,
 )
 from tiresias_workstation.domain.tiresias import (
+    BoardCommand,
+    DeviceControllerState,
     DeviceInformation,
     DeviceSession,
     DeviceState,
@@ -27,6 +29,9 @@ from tiresias_workstation.domain.tiresias import (
     ProtocolInformation,
     RequestResult,
     StatusFlag,
+    SystemStatus,
+    AudioStreamingState,
+    CodecControllerState,
 )
 
 
@@ -35,7 +40,7 @@ def device_session():
     return DeviceSession(
         DeviceInformation("Tiresias", "Tiresias DK", "1", "A", "0.1.0"),
         ProtocolInformation(
-            5,
+            6,
             0,
             ProtocolCapability(15),
             188,
@@ -54,6 +59,12 @@ def device_session():
             0,
         ),
         DSP_PARAMETERS,
+        SystemStatus(
+            DeviceControllerState.OPERATIONAL,
+            DeviceState.READY,
+            AudioStreamingState.DISABLED,
+            CodecControllerState.LOCAL_ONLY,
+        ),
     )
 
 
@@ -66,6 +77,7 @@ class FakeTransport:
         self.disconnected_callback = None
         self.disconnect_during_session_read = False
         self.parameter_writes: list[tuple[int, bytes]] = []
+        self.board_commands: list[BoardCommand] = []
 
     async def scan(self, on_device, *, timeout):
         del timeout
@@ -111,6 +123,15 @@ class FakeTransport:
         self.parameter_writes.append((parameter_id, value))
         await asyncio.sleep(0)
         return ParameterValue(parameter_id, value, 5)
+
+    async def watch_system_status(self, on_status):
+        """Publish a snapshot without using a physical BLE notification."""
+        on_status(device_session().system_status)
+
+    async def send_board_command(self, command):
+        """Retain one typed command for controller assertions."""
+        self.board_commands.append(command)
+        await asyncio.sleep(0)
 
 
 class BleControllerTest(unittest.TestCase):

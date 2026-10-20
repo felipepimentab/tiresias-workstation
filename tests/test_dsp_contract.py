@@ -60,10 +60,10 @@ class DspContractTests(unittest.TestCase):
 
         self.assertEqual(
             [int(definition.parameter_id) for definition in writable],
-            list(range(1, 16)),
+            [1, *range(3, 16)],
         )
     def test_public_metadata_matches_golden_contract_crc(self):
-        """Pin the byte representation advertised by firmware protocol v5."""
+        """Pin the byte representation advertised by firmware protocol v6."""
         entries = b"".join(
             bytes(
                 (
@@ -76,8 +76,8 @@ class DspContractTests(unittest.TestCase):
             for definition in DSP_PARAMETERS
         )
 
-        self.assertEqual(zlib.crc32(entries) & 0xFFFFFFFF, 0x7E8EB66C)
-        self.assertEqual(DSP_PARAMETER_CONTRACT_CRC32, 0x7E8EB66C)
+        self.assertEqual(zlib.crc32(entries) & 0xFFFFFFFF, 0x0056062D)
+        self.assertEqual(DSP_PARAMETER_CONTRACT_CRC32, 0x0056062D)
 
     def test_writable_parameters_accept_only_complete_byte_arrays(self):
         """Validate access and size without assigning numerical meaning."""

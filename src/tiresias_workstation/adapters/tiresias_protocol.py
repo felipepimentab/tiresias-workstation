@@ -18,6 +18,10 @@ from tiresias_workstation.domain.dsp_contract import (
     DspParameterDefinition,
 )
 from tiresias_workstation.domain.tiresias import (
+    AudioStreamingState,
+    BoardCommand,
+    CodecControllerState,
+    DeviceControllerState,
     DeviceInformation,
     DeviceSession,
     DeviceState,
@@ -29,6 +33,7 @@ from tiresias_workstation.domain.tiresias import (
     RequestError,
     RequestResult,
     StatusFlag,
+    SystemStatus,
 )
 
 TIRESIAS_SERVICE_UUID = "7b9a0001-6e4f-4b2d-a9c8-4f2e6f5d1000"
@@ -36,6 +41,8 @@ PROTOCOL_INFO_UUID = "7b9a0002-6e4f-4b2d-a9c8-4f2e6f5d1000"
 STATUS_UUID = "7b9a0004-6e4f-4b2d-a9c8-4f2e6f5d1000"
 REQUEST_UUID = "7b9a0005-6e4f-4b2d-a9c8-4f2e6f5d1000"
 RESPONSE_UUID = "7b9a0006-6e4f-4b2d-a9c8-4f2e6f5d1000"
+SYSTEM_COMMAND_UUID = "7b9a0012-6e4f-4b2d-a9c8-4f2e6f5d1000"
+SYSTEM_STATUS_UUID = "7b9a0022-6e4f-4b2d-a9c8-4f2e6f5d1000"
 
 MANUFACTURER_NAME_UUID = "00002a29-0000-1000-8000-00805f9b34fb"
 MODEL_NUMBER_UUID = "00002a24-0000-1000-8000-00805f9b34fb"
@@ -47,8 +54,9 @@ _PROTOCOL_INFO = struct.Struct("<BBHIHHIII")
 _STATUS = struct.Struct("<BBBBIIBBH")
 _REQUEST = struct.Struct("<BBIBB")
 _RESPONSE = struct.Struct("<BBIBBI")
+_SYSTEM_STATUS = struct.Struct("<BBBBBBBB")
 
-_PROTOCOL_MAJOR = 5
+_PROTOCOL_MAJOR = 6
 _MAX_PARAMETER_SIZE = max(parameter.byte_count for parameter in DSP_PARAMETERS)
 _GET_PARAMETER = 1
 _SET_PARAMETER = 2
@@ -156,7 +164,44 @@ class TiresiasProtocolClient:
         status_deferred = bool(status.flags & StatusFlag.DSP_APPLY_DEFERRED)
         if capability_deferred != status_deferred:
             raise ProtocolError("DSP deferred-apply capability and status disagree.")
-        return DeviceSession(information, protocol, status, DSP_PARAMETERS)
+        system_status = decode_system_status(
+            await self._transport.read_characteristic(SYSTEM_STATUS_UUID)
+        )
+        return DeviceSession(information, protocol, status, DSP_PARAMETERS, system_status)
+
+    async def watch_system_status(
+        self, on_status: Callable[[SystemStatus], None]
+    ) -> None:
+        """Subscribe to state changes and refresh once after registration.
+
+        Args:
+            on_status: Callback invoked on the BLE loop for complete snapshots.
+        """
+
+        def status_received(payload: bytes) -> None:
+            try:
+                on_status(decode_system_status(payload))
+            except ProtocolError:
+                # A malformed unsolicited notification must not terminate the
+                # transport callback; the next valid snapshot can recover it.
+                pass
+
+        await self._transport.start_notifications(SYSTEM_STATUS_UUID, status_received)
+        on_status(
+            decode_system_status(
+                await self._transport.read_characteristic(SYSTEM_STATUS_UUID)
+            )
+        )
+
+    async def send_board_command(self, command: BoardCommand) -> None:
+        """Request a predefined operation; status changes confirm execution.
+
+        Args:
+            command: Board operation accepted by the command service.
+        """
+        await self._transport.write_characteristic(
+            SYSTEM_COMMAND_UUID, bytes((int(command),)), response=True
+        )
 
     async def read_parameter(self, parameter_id: int) -> ParameterValue:
         """Read all opaque bytes of one fixed-contract parameter."""
@@ -370,10 +415,30 @@ def decode_status(payload: bytes) -> DeviceStatus:
         raise ProtocolError("Status contains an unsupported enum value.") from error
 
 
+def decode_system_status(payload: bytes) -> SystemStatus:
+    """Decode one versioned four-subsystem state snapshot."""
+    if len(payload) != _SYSTEM_STATUS.size:
+        raise ProtocolError("System Status must be eight bytes.")
+    version, device, control, streaming, codec, flags, reserved_1, reserved_2 = (
+        _SYSTEM_STATUS.unpack(payload)
+    )
+    if version != 1 or flags != 0 or reserved_1 != 0 or reserved_2 != 0:
+        raise ProtocolError("System Status has an unsupported version or flags.")
+    try:
+        return SystemStatus(
+            DeviceControllerState(device),
+            DeviceState(control),
+            AudioStreamingState(streaming),
+            CodecControllerState(codec),
+        )
+    except ValueError as error:
+        raise ProtocolError("System Status contains an unsupported state.") from error
+
+
 def decode_response(
     payload: bytes,
 ) -> tuple[int, RequestResult, int, int, bytes, int]:
-    """Decode a v5 whole-parameter response, rejecting partial or trailing data."""
+    """Decode a whole-parameter response, rejecting partial or trailing data."""
     if not _RESPONSE.size <= len(payload) <= _RESPONSE.size + _MAX_PARAMETER_SIZE:
         raise ProtocolError("Parameter response has an invalid length.")
     opcode, raw_result, transaction_id, parameter_id, length, revision = (

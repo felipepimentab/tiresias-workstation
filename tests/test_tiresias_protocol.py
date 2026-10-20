@@ -11,17 +11,20 @@ from tiresias_workstation.adapters.tiresias_protocol import (
     PROTOCOL_INFO_UUID,
     REQUEST_UUID,
     STATUS_UUID,
+    SYSTEM_COMMAND_UUID,
+    SYSTEM_STATUS_UUID,
     TIRESIAS_SERVICE_UUID,
     TiresiasProtocolClient,
     decode_protocol_information,
     decode_response,
+    decode_system_status,
 )
 from tiresias_workstation.domain.devices import DiscoveredDevice
 from tiresias_workstation.domain.dsp_contract import (
     DSP_PARAMETER_CONTRACT_CRC32,
     DSP_PARAMETERS,
 )
-from tiresias_workstation.domain.tiresias import ProtocolError, RequestError
+from tiresias_workstation.domain.tiresias import BoardCommand, ProtocolError, RequestError
 
 
 class FakeGattTransport:
@@ -35,7 +38,7 @@ class FakeGattTransport:
             FIRMWARE_REVISION_UUID: b"0.1.0",
             PROTOCOL_INFO_UUID: struct.pack(
                 "<BBHIHHIII",
-                5,
+                6,
                 0,
                 24,
                 15,
@@ -46,8 +49,10 @@ class FakeGattTransport:
                 3,
             ),
             STATUS_UUID: struct.pack("<BBBBIIBBH", 3, 7, 0, 0, 3, 0, 0, 0, 0),
+            SYSTEM_STATUS_UUID: bytes((1, 2, 3, 0, 2, 0, 0, 0)),
         }
         self.callback = None
+        self.status_callback = None
         self.result = 0
         self.emit_response = True
         self.write_delay = 0
@@ -79,6 +84,8 @@ class FakeGattTransport:
         self.last_write = (characteristic_uuid, value, response)
         self.writes.append(value)
         await asyncio.sleep(self.write_delay)
+        if characteristic_uuid == SYSTEM_COMMAND_UUID:
+            return
         opcode, _flags, transaction_id, parameter_id, length = struct.unpack_from("<BBIBB", value)
         request_data = value[8:]
         if len(request_data) != length:
@@ -102,11 +109,17 @@ class FakeGattTransport:
 
     async def start_notifications(self, characteristic_uuid, callback):
         self.assert_uuid = characteristic_uuid
-        self.callback = callback
+        if characteristic_uuid == SYSTEM_STATUS_UUID:
+            self.status_callback = callback
+        else:
+            self.callback = callback
 
     async def stop_notifications(self, characteristic_uuid):
         self.assert_uuid = characteristic_uuid
-        self.callback = None
+        if characteristic_uuid == SYSTEM_STATUS_UUID:
+            self.status_callback = None
+        else:
+            self.callback = None
 
 
 class TiresiasProtocolClientTest(unittest.IsolatedAsyncioTestCase):
@@ -128,9 +141,27 @@ class TiresiasProtocolClientTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(session.parameters), 15)
         self.assertEqual(session.parameters[2].name, "LUT")
         self.assertEqual(session.parameters[2].byte_count, 136)
-        self.assertEqual(len(self.transport.reads), 7)
+        self.assertEqual(len(self.transport.reads), 8)
         self.assertIn(PROTOCOL_INFO_UUID, self.transport.reads)
         self.assertIn(STATUS_UUID, self.transport.reads)
+        self.assertEqual(session.system_status.device.name, "OPERATIONAL")
+
+    async def test_system_status_notifications_and_commands(self):
+        """Decode status changes and send one typed board command."""
+        received = []
+
+        await self.client.watch_system_status(received.append)
+        self.transport.status_callback(bytes((1, 2, 3, 5, 3, 0, 0, 0)))
+        await self.client.send_board_command(BoardCommand.SELECT_LOCAL)
+
+        self.assertEqual(received[0].codec.name, "LOCAL_ONLY")
+        self.assertEqual(received[1].streaming.name, "STREAMING")
+        self.assertEqual(
+            self.transport.last_write,
+            (SYSTEM_COMMAND_UUID, bytes((BoardCommand.SELECT_LOCAL,)), True),
+        )
+        with self.assertRaises(ProtocolError):
+            decode_system_status(bytes((2, 2, 3, 0, 2, 0, 0, 0)))
 
     async def test_marks_service_uuid_without_relying_on_local_name(self):
         """Identify a supported board from its advertised service UUID."""

@@ -20,7 +20,7 @@ from tiresias_workstation.adapters.bleak_adapter import BleakDeviceTransport
 from tiresias_workstation.adapters.tiresias_protocol import TiresiasProtocolClient
 from tiresias_workstation.domain.devices import DeviceTransport, DiscoveredDevice
 from tiresias_workstation.domain.prescriptions import Prescription
-from tiresias_workstation.domain.tiresias import DeviceSession, TiresiasClient
+from tiresias_workstation.domain.tiresias import BoardCommand, DeviceSession, TiresiasClient
 
 # Factories make the controller independently testable with an in-memory
 # transport while ensuring the real Bleak transport is created on its own loop.
@@ -54,6 +54,10 @@ class BleController(QObject):
         parameter_written(object): Emits only after firmware persistence has
             completed successfully.
         parameter_operation_failed(int, str): Emits a parameter ID and error.
+        board_status_changed(object): Emits the latest four-subsystem snapshot.
+        board_command_sent(object): Emits after a command write is accepted;
+            execution is confirmed separately by state notifications.
+        board_command_failed(object, str): Emits a rejected command and error.
         prescription_load_started(object): Emits the accepted
             :class:`Prescription`.
         prescription_load_progress(object): Emits a confirmed
@@ -87,6 +91,9 @@ class BleController(QObject):
     parameter_write_started = Signal(int, object)
     parameter_written = Signal(object)
     parameter_operation_failed = Signal(int, str)
+    board_status_changed = Signal(object)
+    board_command_sent = Signal(object)
+    board_command_failed = Signal(object, str)
     prescription_load_started = Signal(object)
     prescription_load_progress = Signal(object)
     prescription_loaded = Signal(object)
@@ -246,6 +253,28 @@ class BleController(QObject):
             lambda completed: self._parameter_completed(
                 parameter_id, completed, is_write=True
             )
+        )
+        return True
+
+    def send_board_command(self, command: BoardCommand) -> bool:
+        """Schedule one predefined board operation without blocking Qt.
+
+        Args:
+            command: System command to send to the connected board.
+
+        Returns:
+            ``True`` if scheduled, otherwise ``False``.
+        """
+        with self._state_lock:
+            if self._connected_address is None:
+                return False
+        future = self._schedule(
+            lambda transport: transport.send_board_command(command)
+        )
+        if future is None:
+            return False
+        future.add_done_callback(
+            lambda completed: self._board_command_completed(command, completed)
         )
         return True
 
@@ -494,7 +523,9 @@ class BleController(QObject):
                 timeout=self._connection_timeout,
             )
             async with asyncio.timeout(self._connection_timeout):
-                return await transport.read_session()
+                session = await transport.read_session()
+                await transport.watch_system_status(self.board_status_changed.emit)
+                return session
         except BaseException:
             try:
                 await transport.disconnect()
@@ -525,6 +556,21 @@ class BleController(QObject):
             self.parameter_written.emit(value)
         else:
             self.parameter_read.emit(value)
+
+    def _board_command_completed(
+        self, command: BoardCommand, future: Future[Any]
+    ) -> None:
+        """Report command transport acceptance, not state-machine completion."""
+        if not self._finish(future):
+            return
+        try:
+            future.result()
+        except FutureCancelledError:
+            return
+        except Exception as error:
+            self.board_command_failed.emit(command, self._error_message(error))
+            return
+        self.board_command_sent.emit(command)
 
     def _prescription_completed(
         self,
