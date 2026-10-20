@@ -47,7 +47,7 @@ any catalog or future fitting engine; it is not coupled to the bundled assets.
 Before the first write, the loader validates the format version and checks that
 every parameter exists on the connected board, has the expected byte count, and
 is writable. It then persists parameters sequentially and reports confirmed
-parameter and byte progress. Protocol v5 commits each complete parameter in one
+parameter and byte progress. Protocol v6 commits each complete parameter in one
 SET. If a transfer fails, earlier parameters remain committed and the active
 parameter is either unchanged or completely committed. A lost response makes
 that outcome uncertain. The reported error instructs the user to retry the

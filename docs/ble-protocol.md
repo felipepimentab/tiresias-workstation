@@ -1,7 +1,8 @@
 # BLE protocol definition
 
-Protocol v5 transfers one complete parameter per operation. It is incompatible
-with v4; update firmware and workstation together. The service UUID remains
+Protocol v6 transfers one complete parameter per operation and adds separate
+system-status and system-command services. It is incompatible with v5; update
+firmware and workstation together. The parameter-service UUID remains
 `7b9a0001-6e4f-4b2d-a9c8-4f2e6f5d1000`. Discovery uses this UUID, not the local
 name. Characteristic UUIDs use the same suffix; `0003` remains reserved.
 
@@ -19,7 +20,7 @@ native C structures.
 
 ## Wire records
 
-- Protocol Information: `<BBHIHHIII>` — major (5), minor (0), record size (24),
+- Protocol Information: `<BBHIHHIII>` — major (6), minor (0), record size (24),
   capabilities, maximum request size (188), maximum response size (192), contract
   CRC32, boot ID, parameter revision.
 - Request header: `<BBIBB>` — opcode, flags (zero), nonzero transaction ID,
@@ -28,7 +29,7 @@ native C structures.
   payload byte count, committed revision. Payload immediately follows the header.
 - Status: `<BBBBIIBBH>` — control state, flags, last result, reserved zero,
   revision, last transaction ID, last parameter ID, reserved zero, reserved zero.
-  Byte 13, formerly the chunk offset, is reserved in v5.
+  Byte 13, formerly the chunk offset, remains reserved.
 
 GET (opcode 1) has no request payload and returns the entire parameter snapshot.
 SET (opcode 2) must carry exactly the contract byte count and returns the entire
@@ -37,7 +38,8 @@ zero payload count. Result codes retain their v4 values: OK, bad request, not
 found, read-only, out of range, busy, persistence failure, internal error, DSP
 failure. Admission failures are ATT errors, not application results.
 
-The 15-entry contract CRC32 is `0x7e8eb66c`. IDs 3–10 each contain a writable
+The 15-entry contract CRC32 is `0x0056062d`. ID 2 (source selection) is read-only;
+source changes use the system-command service. IDs 3–10 each contain a writable
 136-byte compressor LUT; ID 15 is a writable 180-byte soft clip LUT. The updated
 access flag enables complete output-stage loading and requires matching firmware
 and workstation catalogs. Names live in the workstation and DSP addresses remain in firmware.
@@ -68,9 +70,10 @@ See [Bleak write documentation](https://bleak.readthedocs.io/en/latest/api/clien
 
 The service copies the complete accepted request into a fixed single-entry
 queue. Its worker calls `codec_parameters_set()` exactly once, without merging
-any old bytes. In the Bluetooth-only configuration, that function saves the
-complete value under its parameter's Settings key, then updates the RAM mirror
-and advances the revision once. Identical values are successful no-ops.
+any old bytes. In a hardware-enabled build, that function first applies and
+reads back the codec value, then saves the complete value under its parameter's
+Settings key, updates the RAM mirror, and advances the revision once. Identical
+values are successful no-ops.
 GET returns bytes and revision from one mutex-protected snapshot.
 
 - Malformed or incomplete requests change nothing.
@@ -90,11 +93,37 @@ SET retries. Status is a snapshot, not a durable transaction log.
 
 These guarantees cover communication-induced partial updates of each stored
 parameter. Physical flash fault/power-loss behavior remains that of the Settings
-NVS backend and has not been hardware-tested here. The optional ADAU1787 path
-still applies hardware before persistence: physical DSP failures or persistence
-failures following DSP application are not a transactional hardware guarantee.
-The current build disables that path. Deferred-DSP capability reporting is
-unchanged; it must be reconciled when hardware integration is validated.
+NVS backend and has not been hardware-tested here. The ADAU1787 path applies
+hardware before persistence: a persistence failure following DSP application
+is not a transactional hardware guarantee. Compile-only verification does not
+establish physical DSP or flash-fault behavior.
+
+## System status and commands
+
+The status service uses UUID `7b9a0021-6e4f-4b2d-a9c8-4f2e6f5d1000` with a
+read/notify characteristic `7b9a0022-6e4f-4b2d-a9c8-4f2e6f5d1000`. Its
+eight-byte snapshot is `[version=1, device, control, audio, codec, 0, 0, 0]`.
+The four state bytes mirror the latest Device Controller, Control Link, Audio
+Streaming, and Codec Controller Zbus states. Read gives a snapshot; notifications
+report changes while the control connection is ready. These are state values,
+not measurements, command results, or a durable event history.
+
+The command service uses UUID `7b9a0011-6e4f-4b2d-a9c8-4f2e6f5d1000` with a
+write-with-response characteristic `7b9a0012-6e4f-4b2d-a9c8-4f2e6f5d1000`.
+Each write contains one opcode: 1 starts broadcast discovery, 2 stops it, 3
+selects local audio, 4 requests broadcast audio, and 5 requests recoverable idle.
+The BLE handler publishes the corresponding Device Controller command; it does
+not call subsystem operations directly. A successful ATT write means the request
+was admitted, not that the target state was reached. Observe the reported
+states to confirm the outcome. The sleep request disconnects the control link;
+a button press wakes the board and restores connectable control advertising.
+
+Under the default profile, broadcast discovery is off at startup and is enabled
+by command. The explicit P1 power-evaluation profile starts it automatically.
+The source selector remains readable in the parameter catalog but cannot be set
+through the parameter service. A codec source change is instead requested as a
+system command, allowing the Codec Controller to enforce its existing stream
+availability and fallback policy.
 
 ## Prescriptions
 
@@ -106,4 +135,4 @@ idempotent for unchanged values, but requires restored communication.
 
 The firmware document `docs/architecture/prescription-transactions.md` evaluates
 an explicit begin/stage/commit protocol and durable A/B prescription records.
-That design is proposed, not implemented by v5.
+That design is proposed, not implemented by v6.

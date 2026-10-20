@@ -122,9 +122,10 @@ Compiled DSP objects or Output-stage calibration. Compiled objects load IDs 3–
 confirmed progress and error reporting as the existing prescription loader.
 Local reference protection does not prevent loading reference values onto a board.
 
-Firmware and workstation now share contract CRC32 `0x7e8eb66c`: SoftClip is
-writable. Firmware with the older fingerprint is rejected at connection; update
-both sides together. Wire framing remains protocol v5. Full output loading
+Firmware and workstation share contract CRC32 `0x0056062d`: SoftClip is
+writable, while source selection is read-only and controlled through a board
+command. Firmware with an older fingerprint is rejected at connection; update
+both sides together. Wire framing uses protocol v6. Full output loading
 requires ATT MTU at least 195.
 
 Each parameter write is atomic. Entire compiled prescriptions and output pairs
