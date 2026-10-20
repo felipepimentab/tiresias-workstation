@@ -28,7 +28,7 @@ from tiresias_workstation.domain.devices import DiscoveredDevice
 from tiresias_workstation.domain.dsp_contract import DSP_PARAMETERS_BY_ID
 from tiresias_workstation.domain.fittings import Audiogram
 from test_ble_controller import device_session
-from tiresias_workstation.domain.tiresias import ParameterValue
+from tiresias_workstation.domain.tiresias import BoardCommand, ParameterValue
 from tiresias_workstation.presentation.main_window import MainWindow
 from tiresias_workstation.presentation.device_control_screen import (
     CompressorCurveWidget,
@@ -54,6 +54,9 @@ class FakeController(QObject):
     parameter_write_started = Signal(int, object)
     parameter_written = Signal(object)
     parameter_operation_failed = Signal(int, str)
+    board_status_changed = Signal(object)
+    board_command_sent = Signal(object)
+    board_command_failed = Signal(object, str)
     prescription_load_started = Signal(object)
     prescription_load_progress = Signal(object)
     prescription_loaded = Signal(object)
@@ -71,6 +74,7 @@ class FakeController(QObject):
         self.connect_attempts = []
         self.shutdown_called = False
         self.parameter_writes = []
+        self.board_commands = []
         self.prescription_loads = []
         self.session = device_session()
 
@@ -90,6 +94,12 @@ class FakeController(QObject):
     def disconnect(self):
         self.disconnection_started.emit(self.device.address)
         self.disconnected.emit(self.device.address)
+        return True
+
+    def send_board_command(self, command):
+        """Acknowledge one board command without a Bluetooth adapter."""
+        self.board_commands.append(command)
+        self.board_command_sent.emit(command)
         return True
 
     def shutdown(self):
@@ -210,6 +220,28 @@ class DeviceDiscoveryScreenTest(unittest.TestCase):
 
         self.assertEqual(self.controller.parameter_writes, [(11, b"\x01\x80\x00\x00")])
         self.assertIn("Persisted", control._message.text())
+
+    def test_board_status_commands_and_read_only_source_selector(self):
+        """Keep operational controls separate from DSP parameter writes."""
+        self.controller.session_loaded.emit(self.controller.session)
+        control = self.window.device_control_screen
+        self.window.show()
+        self.app.processEvents()
+
+        self.assertEqual(
+            control.findChild(QLabel, "systemState_device").text(), "Operational"
+        )
+        control.show_board_information()
+        control.findChild(QPushButton, "boardCommand_enable_broadcast").click()
+        self.assertEqual(self.controller.board_commands, [BoardCommand.ENABLE_BROADCAST])
+
+        control.show_parameters()
+        table = control.findChild(QTableWidget, "parameterTable")
+        table.selectRow(1)
+        self.assertFalse(
+            control.findChild(QPushButton, "writeParameterButton").isEnabled()
+        )
+        self.assertEqual(table.item(1, 3).text(), "Read")
 
     def test_connection_header_remains_visible_and_shows_device_identity(self):
         """Keep connection state and basic board details above every page."""

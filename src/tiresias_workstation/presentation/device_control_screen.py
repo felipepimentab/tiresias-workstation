@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QButtonGroup,
     QFormLayout,
     QFrame,
+    QGridLayout,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -49,9 +50,14 @@ from tiresias_workstation.domain.dsp_values import (
     encode_u32_word,
 )
 from tiresias_workstation.domain.tiresias import (
+    AudioStreamingState,
+    BoardCommand,
+    CodecControllerState,
+    DeviceControllerState,
     DeviceSession,
     ParameterValue,
     ProtocolCapability,
+    SystemStatus,
 )
 
 
@@ -264,6 +270,7 @@ class DeviceControlScreen(QWidget):
         self._stored_values: dict[int, ParameterValue] = {}
         self._pending_reads: list[int] = []
         self._operation_active = False
+        self._system_status: SystemStatus | None = None
         self._build_ui()
         self._connect_signals()
         self._set_enabled(False)
@@ -300,10 +307,11 @@ class DeviceControlScreen(QWidget):
         layout.addWidget(self._pages, 1)
 
     def _build_board_page(self) -> QWidget:
-        """Build the read-only identity and compatibility view."""
+        """Build identity, live subsystem status, and command controls."""
         page = QWidget()
         page.setObjectName("boardInformationPage")
-        form = QFormLayout(page)
+        layout = QVBoxLayout(page)
+        form = QFormLayout()
         form.setContentsMargins(24, 24, 24, 24)
         form.setHorizontalSpacing(28)
         form.setVerticalSpacing(13)
@@ -329,6 +337,44 @@ class DeviceControlScreen(QWidget):
             label = QLabel(label_text)
             label.setProperty("role", "fieldLabel")
             form.addRow(label, value)
+        layout.addLayout(form)
+
+        status_form = QFormLayout()
+        status_form.setContentsMargins(24, 0, 24, 12)
+        self._system_state_values: dict[str, QLabel] = {}
+        for key, label_text in (
+            ("device", "Device Controller"),
+            ("control", "Control Link"),
+            ("streaming", "Audio Streaming"),
+            ("codec", "Codec Controller"),
+        ):
+            value = QLabel("—")
+            value.setObjectName(f"systemState_{key}")
+            self._system_state_values[key] = value
+            status_form.addRow(label_text, value)
+        layout.addLayout(status_form)
+
+        command_grid = QGridLayout()
+        self._board_command_buttons: dict[BoardCommand, QPushButton] = {}
+        for index, (command, label_text) in enumerate((
+            (BoardCommand.ENABLE_BROADCAST, "Start LE Audio"),
+            (BoardCommand.DISABLE_BROADCAST, "Stop LE Audio"),
+            (BoardCommand.SELECT_LOCAL, "Local audio"),
+            (BoardCommand.SELECT_BROADCAST, "Broadcast audio"),
+            (BoardCommand.SLEEP, "Sleep (button wakes)"),
+        )):
+            button = QPushButton(label_text)
+            button.setObjectName(f"boardCommand_{command.name.lower()}")
+            self._board_command_buttons[command] = button
+            command_grid.addWidget(button, index // 2, index % 2)
+        layout.addLayout(command_grid)
+        self._board_command_message = QLabel(
+            "Commands are accepted over BLE; state indicators show their outcome."
+        )
+        self._board_command_message.setObjectName("boardCommandMessage")
+        self._board_command_message.setWordWrap(True)
+        layout.addWidget(self._board_command_message)
+        layout.addStretch()
         return page
 
     def _build_parameter_page(self) -> QWidget:
@@ -458,10 +504,10 @@ class DeviceControlScreen(QWidget):
         )
 
     def _build_source_selector_editor(self) -> QWidget:
-        """Build radio controls for digital-versus-ADC source selection."""
+        """Show the read-only source selected by board commands."""
         return self._build_selector_editor(
             DspParameterId.SOURCE_SELECT,
-            "Processing source",
+            "Processing source (command controlled)",
             ((0, "Digital input (I2S)"), (1, "Selected ADC input")),
         )
 
@@ -595,6 +641,15 @@ class DeviceControlScreen(QWidget):
         self._controller.parameter_read.connect(self._parameter_received)
         self._controller.parameter_written.connect(self._parameter_written)
         self._controller.parameter_operation_failed.connect(self._operation_failed)
+        self._controller.board_status_changed.connect(self._board_status_changed)
+        self._controller.board_command_sent.connect(self._board_command_sent)
+        self._controller.board_command_failed.connect(self._board_command_failed)
+        for command, button in self._board_command_buttons.items():
+            button.clicked.connect(
+                lambda _checked=False, selected=command: self._request_board_command(
+                    selected
+                )
+            )
         self._parameter_table.itemSelectionChanged.connect(self._selection_changed)
         self._read_button.clicked.connect(self._read_selected)
         self._write_button.clicked.connect(self._write_selected)
@@ -634,6 +689,7 @@ class DeviceControlScreen(QWidget):
             "fixed parameters · READY"
         )
         self._populate_parameters(payload.parameters)
+        self._board_status_changed(payload.system_status)
         self._set_enabled(True)
         self._refresh_all()
 
@@ -645,12 +701,52 @@ class DeviceControlScreen(QWidget):
         self._stored_values.clear()
         self._pending_reads.clear()
         self._operation_active = False
+        self._system_status = None
         self._progress.hide()
         self._parameter_table.setRowCount(0)
         self._summary.setText("Connect to a compatible board from Devices.")
         for value in self._board_values.values():
             value.setText("—")
+        for value in self._system_state_values.values():
+            value.setText("—")
+        self._board_command_message.setText("Connect to a board to send commands.")
         self._set_enabled(False)
+
+    @Slot(object)
+    def _board_status_changed(self, payload: object) -> None:
+        """Render the latest complete state-machine snapshot."""
+        if self._session is None or not isinstance(payload, SystemStatus):
+            return
+        self._system_status = payload
+        for key in self._system_state_values:
+            state = getattr(payload, key)
+            self._system_state_values[key].setText(
+                state.name.replace("_", " ").title()
+            )
+        self._update_actions()
+
+    def _request_board_command(self, command: BoardCommand) -> None:
+        """Send a predefined operation through the application controller."""
+        if not self._controller.send_board_command(command):
+            self._board_command_message.setText(
+                "The board is disconnected or another operation is in progress."
+            )
+            return
+        self._board_command_message.setText(f"Sending {command.name.lower()}…")
+
+    @Slot(object)
+    def _board_command_sent(self, command: object) -> None:
+        """Distinguish ATT acceptance from a visible state transition."""
+        if isinstance(command, BoardCommand):
+            self._board_command_message.setText(
+                f"{command.name.replace('_', ' ').title()} accepted; awaiting board state."
+            )
+
+    @Slot(object, str)
+    def _board_command_failed(self, command: object, message: str) -> None:
+        """Show a command rejection without claiming execution."""
+        name = command.name if isinstance(command, BoardCommand) else "Command"
+        self._board_command_message.setText(f"{name}: {message}")
 
     @Slot()
     def _selection_changed(self) -> None:
@@ -671,6 +767,8 @@ class DeviceControlScreen(QWidget):
             access = (
                 "Read, write, and persist" if definition.writable else "Read only"
             )
+            if definition.parameter_id == DspParameterId.SOURCE_SELECT:
+                access = "Read only; change the source with a board command"
             if self._is_selector(definition):
                 value_type = "Unsigned 32-bit selector"
                 self._editor_pages.setCurrentIndex(
@@ -994,6 +1092,7 @@ class DeviceControlScreen(QWidget):
             selected_group = bool(
                 idle
                 and definition
+                and definition.writable
                 and int(definition.parameter_id) == parameter_id
             )
             for button in group.buttons():
@@ -1006,6 +1105,35 @@ class DeviceControlScreen(QWidget):
         self._raw_editor.setVisible(show_raw)
         self._value_input.setEnabled(self._write_button.isEnabled())
         self._refresh_button.setEnabled(idle)
+        operational = bool(
+            connected
+            and self._system_status is not None
+            and self._system_status.device is DeviceControllerState.OPERATIONAL
+        )
+        status = self._system_status
+        self._board_command_buttons[BoardCommand.ENABLE_BROADCAST].setEnabled(
+            operational
+            and status.streaming in (
+                AudioStreamingState.DISABLED,
+                AudioStreamingState.IDLE,
+            )
+        )
+        self._board_command_buttons[BoardCommand.DISABLE_BROADCAST].setEnabled(
+            operational
+            and status.streaming not in (
+                AudioStreamingState.DISABLED,
+                AudioStreamingState.IDLE,
+            )
+        )
+        self._board_command_buttons[BoardCommand.SELECT_LOCAL].setEnabled(
+            operational and status.codec is CodecControllerState.BROADCAST_ONLY
+        )
+        self._board_command_buttons[BoardCommand.SELECT_BROADCAST].setEnabled(
+            operational
+            and status.codec is CodecControllerState.LOCAL_ONLY
+            and status.streaming is AudioStreamingState.STREAMING
+        )
+        self._board_command_buttons[BoardCommand.SLEEP].setEnabled(operational)
 
     def _show_message(self, text: str, error: bool = False) -> None:
         """Render a contextual parameter-operation message."""
